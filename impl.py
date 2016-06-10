@@ -4,17 +4,20 @@ from zope.interface.exceptions import BrokenImplementation
 from zope.interface.verify import verifyObject
 
 
+# pylint: disable=inherit-non-class
 class IFoo(zope.interface.Interface):
-   """Foo blah blah"""
+    """Foo blah blah"""
 
-   x = zope.interface.Attribute("""X blah blah""")
+    x = zope.interface.Attribute("""X blah blah""")
 
-   def bar(q, r=None):
-       """bar blah blah"""
+    def bar(self, q, r=None):
+        """bar blah blah"""
+
+# pylint: enable=inherit-non-class
 
 
 def test_ifoo():
-    x = IFoo['x']
+    x = IFoo.x
     assert type(x) == zope.interface.interface.Attribute
     assert x.__name__ == 'x'
     assert x.__doc__ == 'X blah blah'
@@ -38,7 +41,9 @@ class Foo(object):
 
 
 def test_foo():
+    # pylint: disable=no-value-for-parameter
     assert IFoo.implementedBy(Foo)
+    # pylint: enable=no-value-for-parameter
 
 
 class Foo2(object):

@@ -24,36 +24,56 @@ logging.getLogger().pprint = _pprint
 
 def dig(obj, n):
     if (obj is None or
-        isinstance(obj, int) or
-        isinstance(obj, float) or
-        isinstance(obj, complex) or
-        isinstance(obj, str) or
-        isinstance(obj, unicode) or
-        isinstance(obj, bool)):
+            isinstance(obj, int) or
+            isinstance(obj, float) or
+            isinstance(obj, complex) or
+            isinstance(obj, str) or
+            isinstance(obj, unicode) or
+            isinstance(obj, bool)):
         return obj
     if n == 0:
         return "..."
     if isinstance(obj, list):
         iterable = range(len(obj))
-        selector = lambda k, obj=obj: obj[k]
-        keyfunc = lambda x: 'list-{0}'.format(x)
+
+        def selector(k, obj=obj):
+            return obj[k]
+
+        def keyfunc(x):
+            return 'list-{0}'.format(x)
     elif isinstance(obj, tuple):
         iterable = range(len(obj))
-        selector = lambda k, obj=obj: obj[k]
-        keyfunc = lambda x: 'tuple-{0}'.format(x)
+
+        def selector(k, obj=obj):
+            return obj[k]
+
+        def keyfunc(x):
+            return 'tuple-{0}'.format(x)
     elif isinstance(obj, set):
         obj = list(obj)
         iterable = range(len(obj))
-        selector = lambda k, obj=obj: obj[k]
-        keyfunc = lambda x: 'set-{0}'.format(x)
+
+        def selector(k, obj=obj):
+            return obj[k]
+
+        def keyfunc(x):
+            return 'set-{0}'.format(x)
     elif isinstance(obj, dict):
         iterable = [k for k in obj.keys() if not k.startswith('__')]
-        selector = lambda k, obj=obj: obj.get(k)
-        keyfunc = lambda x: x
+
+        def selector(k, obj=obj):
+            return obj.get(k)
+
+        def keyfunc(x):
+            return x
     else:
         iterable = [k for k in dir(obj) if not k.startswith('__')]
-        selector = lambda k, obj=obj: getattr(obj, k)
-        keyfunc = lambda x: '.' + x
+
+        def selector(k, obj=obj):
+            return getattr(obj, k)
+
+        def keyfunc(x):
+            return '.' + x
 
     dct = {}
     for k in iterable:
@@ -79,6 +99,7 @@ def stderr_on_exception(*args):
 def enter_leave(args=True, method=False):
     def decorator(f):
         n = 4
+
         @wraps(f)
         def inner(*args, **kw):
             global _enter_leave_indent
@@ -193,10 +214,6 @@ if 'charlie' in options.things:
 
 
 if 'delta' in options.things:
-    @enter_leave()
-    def add(x, y):
-        return x + y
-
     @enter_leave(args=False)
     def add2(x, y):
         return x + y + add(x, y)
