@@ -1,0 +1,5 @@
+{% for rdb in rdblist %}
+    <button class="remove {{rdb.id}}">Done</button>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <tt>telnet {{ rdb.ipaddr }} {{ rdb.port }}</tt>
+{% endfor %}

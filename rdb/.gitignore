@@ -1,0 +1,4 @@
+venv/
+rdb.egg-info/
+shared/
+*.pyc

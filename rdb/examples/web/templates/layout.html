@@ -1,0 +1,65 @@
+<!doctype html>
+
+<head>
+    <script type="text/javascript" src="{{ url_for('static', filename='jquery-2.2.3.min.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='jquery.dataTables.min.js') }}"></script>
+    <link rel=stylesheet type=text/css href="{{ url_for('static', filename='jquery.dataTables.min.css') }}"></link>
+    <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}"></link>
+</head>
+<body>
+    <title>Job Queue</title>
+    <h1>Job Queue</h1>
+    <button class="start">Start a job</button>
+    <button class="start-debug">Start a job with debug</button>
+    <button class="clear">Clear everything</button>
+    <table id="jobTable" class="display"></table>
+    <table id="resultTable" class="display"></table>
+    <script type="text/javascript">
+    $(function() {
+        var table = $('#jobTable').DataTable({
+            ajax: '/jobsdata',
+            bPaginate: false,
+            columns: [
+                {data: "id", title: "id", "type": "int"},
+                {data: "begin", title: "begin"},
+                {data: "end", title: "end"},
+                {data: "duration", title: "duration", "type": "int"}
+            ]
+        });
+        var table2 = $('#resultTable').DataTable({
+            ajax: '/results',
+            bPaginate: false,
+            columns: [
+                {data: "id", title: "id", "type": "int"},
+                {data: "result", title: "result", "type": "int"}
+            ]
+        });
+        $('.start').click(function (e) {
+            e.preventDefault();
+            $.ajax({
+                url: "/start"
+            });
+            setTimeout(function() {
+                table.ajax.reload();
+                table2.ajax.reload();
+            }, 200);
+        });
+        $('.start-debug').click(function (e) {
+            e.preventDefault();
+            $.ajax({
+                url: "/start-debug"
+            });
+        });
+        $('.clear').click(function (e) {
+            e.preventDefault();
+            $.ajax({
+                url: "/clear"
+            });
+            setTimeout(function() {
+                table.ajax.reload();
+                table2.ajax.reload();
+            }, 200);
+        });
+    });
+    </script>
+</body>
