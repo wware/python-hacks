@@ -44,7 +44,9 @@ class DistributedHandler(logging.Handler):
 def extendLogger(logger):
     def _pprint(thing, logger=logger):
         if logger.isEnabledFor(logging.INFO):
+            # pylint: disable=protected-access
             logger._log(logging.INFO, pprint.pformat(thing), [])
+            # pylint: enable=protected-access
     logger.pprint = _pprint
 
     def _stack(msg=None, logger=logger):
@@ -54,5 +56,7 @@ def extendLogger(logger):
                 stuff.append(str(msg))
             else:
                 stuff[-1] = stuff[-1].rstrip()
+            # pylint: disable=protected-access
             logger._log(logging.INFO, ''.join(stuff), [])
+            # pylint: enable=protected-access
     logger.stack = _stack

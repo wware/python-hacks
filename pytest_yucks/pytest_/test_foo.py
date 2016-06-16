@@ -67,6 +67,7 @@ def test_recursion_depth():
     assert str(excinfo.value) == 'maximum recursion depth exceeded'
 
 
+# pylint: disable=undefined-variable
 @pytest.mark.xfail(raises=NameError)
 def test_never_defined():
     """
@@ -75,6 +76,7 @@ def test_never_defined():
     say what kind of failure we expect.
     """
     never_defined()
+# pylint: enable=undefined-variable
 
 
 def test_warning():
@@ -82,12 +84,14 @@ def test_warning():
     We can also say we expect a warning. Warnings are new to me.
     """
     x = 1
+    # pylint: disable=no-member
     with pytest.warns(UserWarning):
         warnings.warn("The owls are not what they seem.", UserWarning)
         """
         warnings.warn is not raise, so we continue to run code afterwards.
         """
         x = 2
+    # pylint: enable=no-member
     assert x == 2
 
 
