@@ -5,12 +5,17 @@ import argparse
 import inspect
 import logging
 import pdb
+import re
 import pprint
 import subprocess
 import sys
 import tempfile
 from functools import wraps, partial
 
+
+logging.basicConfig(
+    format='%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s'
+)
 
 _debug_magic = False
 _enter_leave_indent = 0
@@ -99,12 +104,21 @@ def stderr_on_exception(*args):
 def enter_leave(args=True, method=False):
     def decorator(f):
         n = 4
+        fmt = logging.Formatter(
+            '%(asctime)-15s  %(levelname)s  {0}:{1}  %(message)s'.format(
+                re.sub('^\./', '', f.func_code.co_filename),
+                f.func_code.co_firstlineno + 1
+            )
+        )
 
         @wraps(f)
         def inner(*args, **kw):
             global _enter_leave_indent
             if not _debug_magic:
                 return f(*args, **kw)
+            oldformats = [h.formatter for h in logging.root.handlers]
+            for h in logging.root.handlers:
+                h.formatter = fmt
             indent = (n * _enter_leave_indent) * " "
             if args:
                 display_args = method and args[1:] or args
@@ -127,6 +141,9 @@ def enter_leave(args=True, method=False):
                 _enter_leave_indent -= 1
                 logging.exception(e)
                 raise e
+            finally:
+                for h, old in zip(logging.root.handlers, oldformats):
+                    h.formatter = old
         return inner
     return decorator
 
@@ -225,8 +242,10 @@ if 'delta' in options.things:
             return args[:1]
 
     set_debug_magic()
+    logging.debug('Start')
     add(3, 4)
     add2(6, 8)
 
     f = Foo()
     f.bar(1, 2, 3)
+    logging.debug('Finish')
