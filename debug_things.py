@@ -21,12 +21,6 @@ _debug_magic = False
 _enter_leave_indent = 0
 
 
-def _pprint(thing, logger=logging.getLogger()):
-    if logger.isEnabledFor(logging.INFO):
-        logger._log(logging.INFO, '\n' + pprint.pformat(thing), [])
-logging.getLogger().pprint = _pprint
-
-
 def dig(obj, n):
     if (obj is None or
             isinstance(obj, int) or
@@ -101,7 +95,7 @@ def stderr_on_exception(*args):
             logging.exception(e)
 
 
-def enter_leave(args=True, method=False):
+def enter_leave(args=True, method=False, prefix=""):
     def decorator(f):
         n = 4
         fmt = logging.Formatter(
@@ -122,20 +116,22 @@ def enter_leave(args=True, method=False):
             indent = (n * _enter_leave_indent) * " "
             if args:
                 display_args = method and args[1:] or args
-                logging.debug('{0}Entering {1}(*{2}, **{3})'.format(
-                    indent, f.func_name, display_args, kw
+                logging.debug('{0}{1}Entering {2}(*{3}, **{4})'.format(
+                    indent, prefix, f.func_name, display_args, kw
                 ))
             else:
-                logging.debug('{0}Entering {1}'.format(indent, f.func_name))
+                logging.debug('{0}{1}Entering {2}'.format(indent, prefix, f.func_name))
             _enter_leave_indent += 1
             try:
                 r = f(*args, **kw)
                 _enter_leave_indent -= 1
                 indent = (n * _enter_leave_indent) * " "
                 if args:
-                    logging.debug('{0}Leaving {1} -> {2}'.format(indent, f.func_name, r))
+                    logging.debug('{0}{1}Leaving {2} -> {3}'.format(
+                        indent, prefix, f.func_name, r
+                    ))
                 else:
-                    logging.debug('{0}Leaving {1}'.format(indent, f.func_name))
+                    logging.debug('{0}{1}Leaving {2}'.format(indent, prefix, f.func_name))
                 return r
             except Exception as e:
                 _enter_leave_indent -= 1
@@ -148,10 +144,16 @@ def enter_leave(args=True, method=False):
     return decorator
 
 
-def set_debug_magic():
+def set_debug_magic(logname="", prefix=""):
     global _debug_magic
     _debug_magic = True
-    logging.getLogger().setLevel(logging.DEBUG)
+    logger = logging.getLogger(logname)
+    logger.setLevel(logging.DEBUG)
+    def _pprint(thing, level=logging.INFO, logger=logger):
+        if logger.isEnabledFor(level):
+            logger._log(level, "\n" + prefix + pprint.pformat(thing), [])
+    logger.pprint = _pprint
+    return logger
 
 
 @enter_leave()
@@ -211,6 +213,8 @@ if options.pdb:
 if options.things is None:
     options.things = thing_choices
 
+set_debug_magic()
+
 
 if 'alpha' in options.things:
     stderr_on_exception('ls', 'q*')
@@ -241,7 +245,6 @@ if 'delta' in options.things:
             assert isinstance(self, Foo), self
             return args[:1]
 
-    set_debug_magic()
     logging.debug('Start')
     add(3, 4)
     add2(6, 8)
