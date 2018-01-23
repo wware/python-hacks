@@ -7,7 +7,7 @@ wrapper.o: wrapper.c
 	gcc -I/usr/include/python2.7 -fPIC -c wrapper.c
 
 hook.o: hook.c
-	gcc -fPIC -c hook.c
+	gcc -g -Wall -fPIC -c hook.c
 
 _hook.so: hook.o wrapper.o
 	gcc -shared wrapper.o hook.o -lpython2.7 -o _hook.so

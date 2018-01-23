@@ -1,5 +1,5 @@
 %module hook
 %{
-void wware_hook(void);
+void my_dumb_hook(void);
 %}
-void wware_hook(void);
+void my_dumb_hook(void);

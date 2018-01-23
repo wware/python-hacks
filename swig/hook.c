@@ -1,4 +1,6 @@
-void wware_hook(void)
+#include <stdio.h>
+
+void my_dumb_hook(void)
 {
-    return;
+    printf("Hello, world\n");
 }
