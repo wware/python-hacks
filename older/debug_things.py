@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from contextlib import contextmanager
 import argparse
 import inspect
 import logging
@@ -10,7 +9,7 @@ import pprint
 import subprocess
 import sys
 import tempfile
-from functools import wraps, partial
+from functools import wraps
 
 
 logging.basicConfig(
@@ -149,6 +148,7 @@ def set_debug_magic(logname="", prefix=""):
     _debug_magic = True
     logger = logging.getLogger(logname)
     logger.setLevel(logging.DEBUG)
+
     def _pprint(thing, level=logging.INFO, logger=logger):
         if logger.isEnabledFor(level):
             logger._log(level, "\n" + prefix + pprint.pformat(thing), [])
@@ -190,16 +190,19 @@ parser = argparse.ArgumentParser(
     prog=sys.argv[0],
     description='Random hacks'
 )
-parser.add_argument('--debug',
+parser.add_argument(
+    '--debug',
     action='store_true',
     help='enable debugging output',
 )
-parser.add_argument('--pdb',
+parser.add_argument(
+    '--pdb',
     action='store_true',
     help='run with PDB',
 )
 thing_choices = ['alpha', 'bravo', 'charlie', 'delta']
-parser.add_argument('--things',
+parser.add_argument(
+    '--things',
     nargs='+',
     choices=thing_choices,
     help='which tests to run',

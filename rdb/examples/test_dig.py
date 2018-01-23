@@ -1,6 +1,7 @@
 import pprint
 from rdb import dig
 
+
 def gen_primes(n):
     yield 2
     known = [2]

@@ -51,12 +51,14 @@ def get_jobs():
     assert r.status_code == 200, r.text
     return '{"data":' + r.text + '}'
 
+
 @app.route('/results')
 def get_results():
     addrs = get_addresses()
     r = requests.get('http://%s:5000/results' % addrs['worker'])
     assert r.status_code == 200, r.text
     return '{"data":' + r.text + '}'
+
 
 @app.route('/clear')
 def clear_everything():

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import inspect
 import os
 import logging
 from contextlib import contextmanager
@@ -9,13 +10,16 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+
 def __LINE__():
     callerframerecord = inspect.stack()[1]
     frame = callerframerecord[0]
     info = inspect.getframeinfo(frame)
     return info.lineno
 
-def findCaller(self):
+
+# pylint: disable=protected-access
+def findCaller(_):
     f = logging.currentframe()
     for _ in range(2 + logging._frame_delta):
         if f is not None:
@@ -33,20 +37,25 @@ def findCaller(self):
 logging.Logger.findCaller = findCaller
 logging._frame_delta = 0
 
+
 @contextmanager
 def logdelta(n):
     d = logging._frame_delta
     logging._frame_delta = d + n
     yield
     logging._frame_delta = d
+# pylint: enable=protected-access
+
 
 def A(x):
     with logdelta(1):
         logging.info('A: ' + x)    # Don't log with this line number
 
+
 def B(x):
     with logdelta(2):
         logging.info('B: ' + x)    # or with this line number
+
 
 def C(x):
     B(x)                           # or this line number

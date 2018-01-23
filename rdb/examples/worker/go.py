@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import random
+import rdb
 import threading
 import time
 
@@ -17,7 +18,6 @@ logging.basicConfig(filename='/shared/worker.log', level=logging.DEBUG)
 
 ##########
 
-import rdb
 
 def get_listener_ip_address():
     for line in open('/shared/addresses').readlines():
@@ -37,12 +37,14 @@ workid = 1
 lock = threading.Lock()
 LOCK_DEBUG = False
 
+
 def acq():
     if LOCK_DEBUG:
         stack = inspect.stack()
         frame = stack[1]
         logger.debug('%s:%d acquire lock' % frame[1:3])
     lock.acquire()
+
 
 def rel():
     lock.release()

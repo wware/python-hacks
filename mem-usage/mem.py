@@ -15,14 +15,20 @@ import Queue
 from collections import namedtuple
 from types import InstanceType
 
+CycleFound = Exception
+Memory = namedtuple('Memory', ['pid', 'used'])
+
+
 def _get_obj_type(obj):
     objtype = type(obj)
     if type(obj) is InstanceType:
         objtype = obj.__class__
     return objtype
 
+
 def _short_typename(obj):
     return _get_obj_type(obj).__name__
+
 
 def _long_typename(obj):
     objtype = _get_obj_type(obj)
@@ -32,6 +38,7 @@ def _long_typename(obj):
         return '%s.%s' % (module, name)
     else:
         return name
+
 
 def info(typename, objects, exclude=None):
     if exclude is None:
@@ -49,6 +56,7 @@ def info(typename, objects, exclude=None):
             sz += sys.getsizeof(o)
     return (count, sz / (1024. * 1024.))
 
+
 def all_info(objects):
     s = set()
     for o in objects:
@@ -60,8 +68,6 @@ def all_info(objects):
         sz += _sz
     return (n, sz)
 
-
-CycleFound = Exception
 
 def find_cycles(obj):
     seen = set()
@@ -79,7 +85,6 @@ def find_cycles(obj):
             else:
                 to_process.put(r)
 
-Memory = namedtuple('Memory', ['pid', 'used'])
 
 def memory_usage():
     return Memory(

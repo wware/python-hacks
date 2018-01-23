@@ -1,10 +1,8 @@
 import httplib
 import logging
 import pprint
-import time
 import traceback
 import urllib
-from math import fmod
 
 from rdb import comms
 

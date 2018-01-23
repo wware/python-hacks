@@ -1,18 +1,14 @@
 #!/usr/bin/env python
 
 import logging
-import objgraph
-import pprint
 import gc
-import re
-import sys
-from mem import Memory, memory_usage, CycleFound, find_cycles, info, all_info
-from memory_profiler import profile
+from mem import memory_usage, all_info
 
 logging.basicConfig(
     format='%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s',
     level=logging.DEBUG,
 )
+
 
 def make_big_list():
     x = [1.0]
@@ -36,6 +32,7 @@ I'll need to spawn a new process AND TERMINATE THAT PROCESS
 when its work is done. I think that's the only way out of this
 morass.
 """
+
 
 def main():
     for _ in xrange(5):

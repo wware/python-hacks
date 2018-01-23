@@ -1,16 +1,18 @@
 import types
 
+
 def dig(obj, depth, _filter=None, callables=False):
     """
     Dig through an object to see its structure.
     """
     if _filter is None:
-        _filter = lambda *args: True
+        def _filter(*args):
+            return True
 
     def skip_dunder(key):
         dunder = (
-            (isinstance(key, str) or isinstance(key, unicode))
-            and key.startswith('__')
+            (isinstance(key, str) or isinstance(key, unicode)) and
+            key.startswith('__')
         )
         return not dunder
 
@@ -30,13 +32,19 @@ def dig(obj, depth, _filter=None, callables=False):
         return obj
     elif isinstance(obj, list) or isinstance(obj, tuple):
         keys = xrange(len(obj))
-        selector = lambda k, obj=obj: obj[k]
+
+        def selector(k, obj=obj):
+            return obj[k]
     elif isinstance(obj, dict):
         keys = [key for key in obj.keys() if skip_dunder(key)]
-        selector = lambda k, obj=obj: obj.get(k)
+
+        def selector(k, obj=obj):
+            return obj.get(k)
     else:
         keys = [key for key in dir(obj) if skip_dunder(key)]
-        selector = lambda k, obj=obj: getattr(obj, k)
+
+        def selector(k, obj=obj):
+            return getattr(obj, k)
 
     # collect = {'__type': type(obj)}
     collect = {}

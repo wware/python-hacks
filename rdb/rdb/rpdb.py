@@ -1,8 +1,6 @@
 import httplib
 import logging
 import os
-import sys
-import threading
 import urllib
 import remote_pdb
 
@@ -22,7 +20,6 @@ def inform(host_ip, port):
         conn.close()
     except Exception as e:
         logging.exception(e)
-
 
 
 class RemotePdb(remote_pdb.RemotePdb):

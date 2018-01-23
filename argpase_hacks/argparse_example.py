@@ -5,7 +5,6 @@ import logging
 import os
 import sys
 import pprint
-from textwrap import dedent
 
 HERE = os.path.dirname(__file__)
 __doc__ = open(os.path.join(HERE, 'argparse_example.md')).read()

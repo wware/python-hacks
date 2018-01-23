@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import json
-import logging
-from werkzeug.exceptions import abort
 from flask import Flask, request, render_template
 
 # Don't enable logging, there is a 1-second polling loop in the JavaScript, so
@@ -13,13 +11,16 @@ app = Flask(__name__)
 logs = []
 rdbid = 0
 
+
 @app.route('/')
 def index():
     return render_template('layout.html')
 
+
 @app.route('/images/<path:path>')
 def show_image(path):
     return open('static/' + path).read()
+
 
 def jtable(x):
     return json.dumps(
@@ -27,6 +28,7 @@ def jtable(x):
         sort_keys=True,
         indent=4, separators=(',', ': ')
     )
+
 
 @app.route('/get_logs')
 def get_logs():
@@ -50,6 +52,7 @@ def post_log():
 
 rdb_sessions = []
 
+
 @app.route('/rdb', methods=['POST'])
 def post_rdb():
     global rdbid
@@ -57,12 +60,14 @@ def post_rdb():
     rdbid += 1
     return ''
 
+
 @app.route('/check-rdb', methods=['GET'])
 def get_rdb():
     sessions = [
         {'id': id, 'ipaddr': ipaddr, 'port': port} for id, ipaddr, port in rdb_sessions
     ]
     return render_template('rdblist.html', rdblist=sessions)
+
 
 @app.route('/rdb-done/<n>')
 def remove_rdb(n):

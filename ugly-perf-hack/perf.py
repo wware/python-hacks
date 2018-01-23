@@ -5,15 +5,15 @@ An ill-designed performance measuring thing for Python, use at your own risk.
 I'd prefer line_profiler except I'm on Python 2.7 and cannot upgrade.
 """
 
-import pprint
-import re
 import logging
 import timeit
 import traceback
 from functools import wraps
 from contextlib import contextmanager
+from collections import Counter
 
 _WIDTH = 50
+
 
 class ProfilerHack(object):
     _profilers = {}
@@ -39,6 +39,7 @@ class ProfilerHack(object):
             f.func_code.co_firstlineno,
             f.func_code.co_name
         )
+
         @wraps(f)
         def wrapper_with_debug(*args, **kwargs):
             start = timeit.default_timer()
@@ -81,8 +82,6 @@ class ProfilerHack(object):
 
 ########################
 
-from collections import Counter
-
 logFormatter = logging.Formatter(
     "%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s"
 )
@@ -94,11 +93,13 @@ rootLogger.setLevel(logging.DEBUG)
 p = ProfilerHack.get()
 c = Counter()
 
+
 @p.profile
 def inner():
     with p.context('inner update loop'):
         for _ in range(100):
             c.update('abcd')
+
 
 @p.profile
 def middle():
@@ -106,6 +107,7 @@ def middle():
         for _ in range(100):
             c.update('efgh')
         inner()
+
 
 @p.profile
 def outer():
