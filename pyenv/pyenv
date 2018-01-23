@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+
+"""
+This is a virtualenv swiss army knife wrapper loosely based on
+https://gist.github.com/datagrok/2199506.
+
+Example .pyenvrc file:
+
+    VIRTUAL_ENV=/home/wware/foobar/venv
+    PIP_INSTALL="pip uninstall -y myproject ; pip install -e ./myproject"
+    # PIP_INSTALL="python setup.py build && \\
+    #     pip uninstall -y myproject; \\
+    #     pip install my-packages/myproject-0.0.0.tar.gz"
+"""
+
+import argparse
+import os
+import pdb
+import pprint
+import sys
+import logging
+import subprocess
+
+
+def hack_logging(debug):
+    if debug:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    rootLogger = logging.getLogger()
+    if len(rootLogger.handlers) == 0:
+        handler = logging.StreamHandler()
+        rootLogger.addHandler(handler)
+    else:
+        handler = rootLogger.handlers[0]
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s"
+    ))
+
+    def _pprint(thing):
+        if rootLogger.isEnabledFor(level):
+            rootLogger._log(level, "\n" + pprint.pformat(thing), [])
+    logging.pprint = _pprint
+    rootLogger.setLevel(level)
+
+
+def parse_cmd_line_args():
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(__file__),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__
+    )
+    parser.add_argument(
+        '--rc',
+        action='store_true',
+        help='specify a pyenvrc file',
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        help='turn on debug-level debugging output',
+    )
+    parser.add_argument(
+        '-D', '--pdb',
+        action='store_true',
+        help='run this script in the python debugger',
+    )
+    parser.add_argument(
+        '-S', '--shell',
+        action='store_true',
+        help='run a bash shell in this virtualenv',
+    )
+    parser.add_argument(
+        '-p', '--pip',
+        action='store_true',
+        help="rebuild code and pip re-install before running python",
+    )
+    parser.add_argument(
+        '-P', '--profile',
+        action='store_true',
+        help='run this script in the python debugger',
+    )
+
+    your_args = sys.argv[1:]
+    my_args = []
+    while len(your_args) > 0 and your_args[0].startswith("-"):
+        my_args.append(your_args.pop(0))
+    return parser.parse_args(my_args), your_args
+
+
+def main():
+    options, extra_args = parse_cmd_line_args()
+    hack_logging(options.debug)
+    if options.pdb:
+        pdb.set_trace()
+    if options.rc:
+        execfile(options.rc)
+    else:
+        for pyenvrcfile in ("./.pyenvrc", os.environ["HOME"] + "/.pyenvrc"):
+            if os.path.isfile(pyenvrcfile):
+                _locals = {}
+                execfile(pyenvrcfile, {}, _locals)
+                virtual_env = _locals["VIRTUAL_ENV"]
+                pip_install = _locals["PIP_INSTALL"]
+                break
+    venvbin = virtual_env + "/bin"
+    subenv = os.environ.copy()
+    subenv["PATH"] = venvbin + ":" + os.environ["PATH"]
+    if "PYTHON_HOME" in subenv:
+        del subenv["PYTHON_HOME"]
+
+    if options.pip:
+        subprocess.call(pip_install, shell=True, env=subenv)
+
+    if options.shell:
+        print subenv['PATH']
+        r = subprocess.call('/bin/bash -', shell=True, env=subenv)
+        sys.exit(r)
+
+    if options.profile:
+        pycmd = ["python", "-m", "cProfile", "-o", "log.profile"]
+    else:
+        pycmd = ["python"]
+    subprocess.call(pycmd + extra_args, env=subenv)
+
+
+if __name__ == "__main__":
+    main()
