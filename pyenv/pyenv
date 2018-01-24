@@ -78,7 +78,7 @@ def parse_cmd_line_args():
     parser.add_argument(
         '-P', '--profile',
         action='store_true',
-        help='run this script in the python debugger',
+        help='run this script with cProfile to collect performance info',
     )
 
     your_args = sys.argv[1:]
@@ -91,8 +91,7 @@ def parse_cmd_line_args():
 def main():
     options, extra_args = parse_cmd_line_args()
     hack_logging(options.debug)
-    if options.pdb:
-        pdb.set_trace()
+    virtual_env = pip_install = ""
     if options.rc:
         execfile(options.rc)
     else:
@@ -117,10 +116,11 @@ def main():
         r = subprocess.call('/bin/bash -', shell=True, env=subenv)
         sys.exit(r)
 
+    pycmd = ["python"]
     if options.profile:
-        pycmd = ["python", "-m", "cProfile", "-o", "log.profile"]
-    else:
-        pycmd = ["python"]
+        pycmd += ["-m", "cProfile", "-o", "log.profile"]
+    if options.pdb:
+        pycmd += ["-m", "pdb"]
     subprocess.call(pycmd + extra_args, env=subenv)
 
 
