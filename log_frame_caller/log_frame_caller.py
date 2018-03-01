@@ -3,7 +3,10 @@
 import inspect
 import os
 import logging
+import traceback
 from contextlib import contextmanager
+
+_unique = object()
 
 logging.basicConfig(
     format='%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s',
@@ -45,6 +48,16 @@ def logdelta(n):
     yield
     logging._frame_delta = d
 # pylint: enable=protected-access
+
+
+def ping(msg=_unique):
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        if msg is _unique:
+            msg = ""
+        else:
+            msg = str(msg)
+        with logdelta(1):
+            logging.debug(msg + '\n' + ''.join(traceback.format_stack()))
 
 
 def A(x):
