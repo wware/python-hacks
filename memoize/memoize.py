@@ -1,4 +1,5 @@
 import unittest
+from functools import wraps
 
 _cache = {}
 
@@ -43,33 +44,25 @@ class Foo(object):
         return None
 
 
-def get_cache(memoized):
-    F = memoized.fget
-    d = dict(zip(F.func_code.co_freevars, [cell.cell_contents for cell in F.func_closure]))
-    return d['cache']
-
-
 class MemoizeTest(unittest.TestCase):
 
     def test1(self):
         foo = Foo()
-        key = (id(foo),)
-        cache = get_cache(Foo.my_tuple)
-        self.assertTrue(key not in cache)
         self.assertEqual(foo.my_tuple, ('a', 'b', 'c'))
-        self.assertEqual(cache[key], ('a', 'b', 'c'))
+        my_tuple = Foo.my_tuple.fget.func_closure[0].cell_contents
+        key = (id(my_tuple), id(foo),)
+        self.assertEqual(_cache[key], ('a', 'b', 'c'))
         self.assertEqual(foo.my_tuple, ('a', 'b', 'c'))
-        self.assertEqual(cache[key], ('a', 'b', 'c'))
+        self.assertEqual(_cache[key], ('a', 'b', 'c'))
 
     def test2(self):
         foo = Foo()
-        key = (id(foo),)
-        cache = get_cache(Foo.my_none)
-        self.assertTrue(key not in cache)
+        my_none = Foo.my_none.fget.func_closure[0].cell_contents
         self.assertEqual(foo.my_none, None)
-        self.assertEqual(cache[key], None)
+        key = (id(my_none), id(foo),)
+        self.assertEqual(_cache[key], None)
         self.assertEqual(foo.my_none, None)
-        self.assertEqual(cache[key], None)
+        self.assertEqual(_cache[key], None)
 
 
 print "To test this, type: nosetests memoize.py"
