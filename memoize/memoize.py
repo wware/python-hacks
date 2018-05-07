@@ -1,22 +1,29 @@
 import unittest
 
+_cache = {}
+
 
 def memoize(func):
-    from functools import wraps
-    cache = {}
+    """
+    Decorator that memoizes a function. The memoized function can use "fresh=True"
+    to avoid using cached results.
+    @param func: the function to be memoized
+    @return: the function with memoization
+    """
 
     def short(x, primitive=(int, long, float, str, complex, unicode, bool)):
         return x if isinstance(x, primitive) else id(x)
 
     @wraps(func)
     def newfunc(*args, **kwargs):
-        key = (
+        fresh = kwargs.pop('fresh', False)
+        key = (id(func), ) + (
             tuple([short(x) for x in args]) +
             tuple([(short(k), short(v)) for k, v in kwargs.items()])
         )
-        if key not in cache:
-            cache[key] = func(*args, **kwargs)
-        return cache[key]
+        if fresh or key not in _cache:
+            _cache[key] = func(*args, **kwargs)
+        return _cache[key]
     return newfunc
 
 
