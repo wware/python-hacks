@@ -1,21 +1,57 @@
 #!/usr/bin/env python
 
-"""
-An ill-designed performance measuring thing for Python, use at your own risk.
-I'd prefer line_profiler except I'm on Python 2.7 and cannot upgrade.
-"""
-
 import logging
+import os
+import sys
 import timeit
 import traceback
+import cProfile
 from functools import wraps
 from contextlib import contextmanager
 from collections import Counter
 
+logging.basicConfig(
+    format='%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s',
+    level=logging.DEBUG
+    # level=logging.INFO
+)
+
+# pylint: disable=protected-access
+def findCaller(_):
+    f = logging.currentframe()
+    for _ in range(2 + logging._frame_delta):
+        if f is not None:
+            f = f.f_back
+    rv = "(unknown file)", 0, "(unknown function)"
+    while hasattr(f, "f_code"):
+        co = f.f_code
+        filename = os.path.normcase(co.co_filename)
+        if filename == logging._srcfile:
+            f = f.f_back
+            continue
+        rv = (co.co_filename, f.f_lineno, co.co_name)
+        break
+    return rv
+logging.Logger.findCaller = findCaller
+logging._frame_delta = 0
+
+
+@contextmanager
+def logdelta(n):
+    d = logging._frame_delta
+    logging._frame_delta = d + n
+    yield
+    logging._frame_delta = d
+# pylint: enable=protected-access
+
+
 _WIDTH = 50
 
-
 class ProfilerHack(object):
+    """
+    An ill-designed performance measuring thing for Python, use at your own risk.
+    I'd prefer line_profiler except I'm on Python 2.7 and cannot upgrade.
+    """
     _profilers = {}
 
     @classmethod
@@ -62,11 +98,12 @@ class ProfilerHack(object):
 
     def show_profile(self):
         if logging.getLogger().isEnabledFor(logging.DEBUG):
-            lst = [(-t, name) for name, t in self.get_profile().items()]
-            lst.sort()
-            for t, name in lst:
-                fmt = "{0:>" + str(_WIDTH) + "} {1}"
-                logging.debug(fmt.format(name, -t))
+            with logdelta(1):
+                lst = [(-t, name) for name, t in self.get_profile().items()]
+                lst.sort()
+                for t, name in lst:
+                    fmt = "{0:>" + str(_WIDTH) + "} {1}"
+                    logging.debug(fmt.format(name, -t))
 
     @contextmanager
     def context(self, legend):
@@ -74,49 +111,103 @@ class ProfilerHack(object):
             filename, line, _, _ = traceback.extract_stack()[-3]
             name = self.pretty_name(filename, line, legend)
             start = timeit.default_timer()
-            yield None
+            yield
             end = timeit.default_timer()
             self._profile_info[end] = (name, end - start)
         else:
-            yield None
+            yield
+
+if False:
+    ## Let's test it
+
+    p = ProfilerHack.get()
+    c = Counter()
+
+
+    @p.profile
+    def inner():
+        with p.context('inner update loop'):
+            for _ in range(100):
+                c.update('abcd')
+
+
+    @p.profile
+    def middle():
+        for _ in range(100):
+            for _ in range(100):
+                c.update('efgh')
+            inner()
+
+
+    @p.profile
+    def outer():
+        for _ in range(100):
+            with p.context('outer update loop'):
+                for _ in range(100):
+                    c.update('ijkl')
+            middle()
+
+    outer()
+
+    p.show_profile()
 
 ########################
 
-logFormatter = logging.Formatter(
-    "%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s"
-)
-rootLogger = logging.getLogger()
-consoleHandler = logging.StreamHandler()
-consoleHandler.setFormatter(logFormatter)
-rootLogger.setLevel(logging.DEBUG)
+@contextmanager
+def profile_to_log(log_level):
+    class StreamToLogger(object):
+        def __init__(self, logger):
+            self.logger = logger
+            self.linebuf = ''
 
-p = ProfilerHack.get()
+        def write(self, buf):
+            if buf.endswith("\n"):
+                self.logger.log(log_level, self.linebuf + buf.rstrip())
+                self.linebuf = ''
+            else:
+                self.linebuf += buf
+
+        def flush(self):
+            pass
+
+    logger = logging.getLogger()
+    pr = None
+    enabled = logger.isEnabledFor(log_level)
+    try:
+        if enabled:
+            pr = cProfile.Profile()
+            pr.enable()
+        yield
+    finally:
+        if enabled and pr is not None:
+            pr.disable()
+            orig_ss, sys.stdout = sys.stdout, StreamToLogger(logger)
+            pr.print_stats(sort='tottime')
+            sys.stdout = orig_ss
+
+########################
+
 c = Counter()
+n = 50
 
 
-@p.profile
 def inner():
-    with p.context('inner update loop'):
-        for _ in range(100):
-            c.update('abcd')
+    for _ in range(n):
+        c.update('abcd')
 
 
-@p.profile
 def middle():
-    for _ in range(100):
-        for _ in range(100):
+    for _ in range(n):
+        for _ in range(n):
             c.update('efgh')
         inner()
 
 
-@p.profile
 def outer():
-    for _ in range(100):
-        with p.context('outer update loop'):
-            for _ in range(100):
-                c.update('ijkl')
+    for _ in range(n):
+        for _ in range(n):
+            c.update('ijkl')
         middle()
 
-outer()
-
-p.show_profile()
+with profile_to_log(logging.INFO):
+    outer()
