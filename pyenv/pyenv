@@ -14,6 +14,7 @@ Example .pyenvrc file:
 """
 
 import argparse
+import signal
 import os
 import pdb
 import pprint
@@ -22,7 +23,7 @@ import logging
 import subprocess
 
 
-def hack_logging(debug):
+def setup_logging(debug):
     if debug:
         level = logging.DEBUG
     else:
@@ -44,7 +45,7 @@ def hack_logging(debug):
     rootLogger.setLevel(level)
 
 
-def parse_cmd_line_args():
+def parse_cmd_line_args(args=None):
     parser = argparse.ArgumentParser(
         prog=os.path.basename(__file__),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -66,9 +67,18 @@ def parse_cmd_line_args():
         help='run this script in the python debugger',
     )
     parser.add_argument(
+        '-i', '--interactive',
+        action='store_true',
+        help='run a Python REPL in this virtualenv',
+    )
+    parser.add_argument(
         '-S', '--shell',
         action='store_true',
         help='run a bash shell in this virtualenv',
+    )
+    parser.add_argument(
+        '-c', '--cmd',
+        help="execute some python code",
     )
     parser.add_argument(
         '-p', '--pip',
@@ -80,18 +90,18 @@ def parse_cmd_line_args():
         action='store_true',
         help='run this script with cProfile to collect performance info',
     )
+    parser.add_argument('extras', nargs=argparse.REMAINDER)
 
-    your_args = sys.argv[1:]
-    my_args = []
-    while len(your_args) > 0 and your_args[0].startswith("-"):
-        my_args.append(your_args.pop(0))
-    return parser.parse_args(my_args), your_args
+    if args is None:
+        args = sys.argv[1:]
+    args = parser.parse_args(args)
+    return args, args.extras
 
 
 def main():
     options, extra_args = parse_cmd_line_args()
-    hack_logging(options.debug)
-    virtual_env = pip_install = ""
+    setup_logging(options.debug)
+    virtual_env = pip_install = "possible_bogosity_if_not_overwritten"
     if options.rc:
         execfile(options.rc)
     else:
@@ -111,8 +121,22 @@ def main():
     if options.pip:
         subprocess.call(pip_install, shell=True, env=subenv)
 
+    if options.cmd:
+        logging.debug(subenv['PATH'])
+        r = subprocess.call(
+            '/usr/bin/env python -c "{0}"'.format(options.cmd.replace('"', '\\"')),
+            shell=True,
+            env=subenv
+        )
+        sys.exit(r)
+
+    if options.interactive:
+        logging.debug(subenv['PATH'])
+        r = subprocess.call('/usr/bin/env python', shell=True, env=subenv)
+        sys.exit(r)
+
     if options.shell:
-        print subenv['PATH']
+        logging.debug(subenv['PATH'])
         r = subprocess.call('/bin/bash -', shell=True, env=subenv)
         sys.exit(r)
 
@@ -121,7 +145,11 @@ def main():
         pycmd += ["-m", "cProfile", "-o", "log.profile"]
     if options.pdb:
         pycmd += ["-m", "pdb"]
-    subprocess.call(pycmd + extra_args, env=subenv)
+    p = subprocess.Popen(pycmd + extra_args, env=subenv)
+    try:
+        p.wait()
+    except KeyboardInterrupt:
+        p.send_signal(signal.SIGINT)
 
 
 if __name__ == "__main__":
