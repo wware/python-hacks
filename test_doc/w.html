@@ -1,0 +1,41 @@
+<html><h1>Testable documentation</h1>
+<p>I saw somebody give a presentation on documentation that could be included
+in automatic tests. That is to say, the usage examples provided in the docs
+could be automatically checked to make sure they still work with the current
+code. The idea intrigued me and I started thinking about how to do that in
+Python.</p>
+<p>After a few false starts, I saw that it made sense to enable Markdown docs
+(like this one) to create links into source code. These links are expanded
+by the <code>weave.py</code> script, which gets invoked like this.</p>
+<pre><code>./weave.py &lt; README.md &gt; foobar.html
+</code></pre>
+<p>Then when you view foobar.html in a browser, the links are expanded to the
+source code entity, which can be any named Python object, such as a function,
+class, or method. For instance, here are some unit tests.</p>
+<pre><code>class TestMyStuff(unittest.TestCase):
+    def test_add(self):
+        self.assertEquals(add(4, 2), 6)
+        self.assertEquals(add(3, 19), 22)
+
+    def test_Foo(self):
+        f = Foo()
+        self.assertTrue(isinstance(f, Foo))
+        self.assertEquals(f.add_five(3), 8)
+</code></pre>
+<p>The link is a line starting with an asterisk, like "@tests.py:TestMyStuff".
+They are testing the class and the function shown below.</p>
+<pre><code>class Foo(object):
+    def add_five(self, x):
+        print 'do something useless here'
+        return add(x, 5)
+
+def add(x, y):
+    return x + y
+</code></pre>
+<p>Unit tests need to be run frequently, as they should be during development,
+to ensure that they always correctly represent what the code is doing. Then
+they can be included in documents with these simple links.</p>
+<p>It's still possible for the textual content of the markdown file to lag
+behind changes in the code. That's unavoidable, unless the markdown somehow
+pulls comments out of the docstrings for the Python objects. Maybe that's
+the next step here.</p></html>
