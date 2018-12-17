@@ -1,5 +1,7 @@
 # Testable documentation
 
+[Fully rendered](http://htmlpreview.github.io/?https://github.com/wware/python-hacks/blob/master/test_doc/w.html)
+
 I saw somebody give a presentation on documentation that could be included
 in automatic tests. That is to say, the usage examples provided in the docs
 could be automatically checked to make sure they still work with the current
