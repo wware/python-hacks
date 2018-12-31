@@ -7,7 +7,13 @@ from functional import add, Foo
 
 
 class TestMyStuff(unittest.TestCase):
+    """
+    This is the docstring for TestMyStuff.
+    """
     def test_add(self):
+        """Some stuff I want to see:
+        Here is the docstring for test_add, a method of TestMyStuff.
+        """
         self.assertEquals(add(4, 2), 6)
         self.assertEquals(add(3, 19), 22)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import ast
+import importlib
 import markdown
 import os
 import re
@@ -10,63 +10,26 @@ import time
 import webbrowser
 
 
-def hack_file(src, verbose=False):
-    d = {}
-
-    def find_lines(obj, indent, stack):
-        if stack is None:
-            stack = []
-        r = obj.lineno
-        if verbose:
-            _indent = (4 * indent) * " "
-            print _indent, (
-                obj.lineno,
-                obj.name if hasattr(obj, 'name') else obj,
-                stack
-            )
-        for b in getattr(obj, 'body', []):
-            r = max(r, find_lines(
-                b,
-                indent + 1,
-                stack + ([obj.name] if hasattr(obj, 'name') else [])
-            ))
-        if hasattr(obj, 'name'):
-            dotted = '.'.join(stack + [obj.name])
-            d[dotted] = (obj.lineno, r)
-        return r
-
-    x = ast.parse(src)
-    for c in x.body:
-        find_lines(c, 0, [])
-    return d
+def hackDocstring(d):
+    r = re.compile(r"^(\s*)([^\s].*)")
+    n = None
+    L = []
+    for i, s in enumerate(d.split("\n")):
+        m = r.match(s)
+        if m is not None:
+            if i > 0:
+                n1 = len(m.group(1))
+                n = n1 if n is None else min(n, n1)
+            L.append(m.group(2))
+        elif i > 0:
+            L.append('')
+    return (n, '\n'.join(L).rstrip())
 
 
-doclines = sys.stdin.readlines()
-rdoc = re.compile(r"^@([_a-zA-Z][_0-9a-zA-Z]+.py):([_a-zA-Z][._0-9a-zA-Z]+)")
-lookups = {}
-
-for line in doclines:
-    line = line.rstrip()
-    m = rdoc.search(line)
-    if m is not None:
-        filename = m.group(1)
-        dotted = m.group(2)
-        if filename not in lookups:
-            lookups[filename] = hack_file(open(filename).read())
-        assert dotted in lookups[filename], "Cannot find {0}:{1}".format(filename, dotted)
-
-result = []
-for line in doclines:
-    line = line.rstrip()
-    m = rdoc.search(line)
-    if m is not None:
-        filename = m.group(1)
-        dotted = m.group(2)
-        lines = [l.rstrip() for l in open(filename).readlines()]
-        m, n = lookups[filename][dotted]
-        for l in lines[m-1:n]:
-            result.append('    ' + l)
-    else:
-        result.append(line)
-
-print '<html>' + markdown.markdown('\n'.join(result)) + '</html>'
+t = importlib.import_module('tests')
+n, s = hackDocstring(t.TestMyStuff.__doc__)
+print n
+print '<<<' + s + '>>>'
+n, s = hackDocstring(t.TestMyStuff.test_add.__doc__)
+print n
+print '<<<' + s + '>>>'
