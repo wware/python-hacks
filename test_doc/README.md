@@ -35,3 +35,36 @@ It's still possible for the textual content of the markdown file to lag
 behind changes in the code. That's unavoidable, unless the markdown somehow
 pulls comments out of the docstrings for the Python objects. Maybe that's
 the next step here.
+
+## Thinking about going further with this
+
+I'm looking at [Mistune](https://github.com/lepture/mistune) and while it's
+appealing, it's not the right direction. My chief problem is that I want to
+pull lines out of source files and I need to decide how to do that gracefully.
+
+Currently I try to figure out where a method or function or class ends. That
+mostly works. But then I can't pull out just some section of something. And
+the way I do it works mostly, but not perfectly.
+
+I could mark up my source with comments like `#+foobar` to start a section and
+`#-foobar` to end it, but that's really kinda messy. It would have the benefit
+of keeping documentation prominent in the mind of the developer as they
+change the code, since they need to have those tags make sense. But it's still
+a bit ugly.
+
+I'm half convinced that those ugly tags are really the right way to go. I
+don't see a much prettier solution to this. Either the code is marked up or
+it isn't, and if it is, you need markup that doesn't break functionality
+and isn't too cumbersome, and `#+foobar` may be about as well as you can do.
+
+Let's use `@` for whole things (classes, methods, functions) which are
+already working, and use `=` for tagged regions. The mnemonic will be that
+`+`, `-`, and `=` are all arithmetic symbols. So let's try some of that.
+
+Here is a bit of the regulra expression hacking to make this work.
+
+=weave.py:hack-regex-1
+
+And a little bit more of that hacking here.
+
+=weave.py:hack-regex-2

@@ -39,4 +39,38 @@ they can be included in documents with these simple links.</p>
 <p>It's still possible for the textual content of the markdown file to lag
 behind changes in the code. That's unavoidable, unless the markdown somehow
 pulls comments out of the docstrings for the Python objects. Maybe that's
-the next step here.</p></html>
+the next step here.</p>
+<h2>Thinking about going further with this</h2>
+<p>I'm looking at <a href="https://github.com/lepture/mistune">Mistune</a> and while it's
+appealing, it's not the right direction. My chief problem is that I want to
+pull lines out of source files and I need to decide how to do that gracefully.</p>
+<p>Currently I try to figure out where a method or function or class ends. That
+mostly works. But then I can't pull out just some section of something. And
+the way I do it works mostly, but not perfectly.</p>
+<p>I could mark up my source with comments like <code>#+foobar</code> to start a section and
+<code>#-foobar</code> to end it, but that's really kinda messy. It would have the benefit
+of keeping documentation prominent in the mind of the developer as they
+change the code, since they need to have those tags make sense. But it's still
+a bit ugly.</p>
+<p>I'm half convinced that those ugly tags are really the right way to go. I
+don't see a much prettier solution to this. Either the code is marked up or
+it isn't, and if it is, you need markup that doesn't break functionality
+and isn't too cumbersome, and <code>#+foobar</code> may be about as well as you can do.</p>
+<p>Let's use <code>@</code> for whole things (classes, methods, functions) which are
+already working, and use <code>=</code> for tagged regions. The mnemonic will be that
+<code>+</code>, <code>-</code>, and <code>=</code> are all arithmetic symbols. So let's try some of that.</p>
+<p>Here is a bit of the regulra expression hacking to make this work.</p>
+<pre><code>        filename = m.group(1)
+        dotted = m.group(2)
+        if filename not in lookups:
+            lookups[filename] = hack_file(open(filename).read())
+        assert dotted in lookups[filename], "Cannot find {0}:{1}".format(filename, dotted)
+</code></pre>
+<p>And a little bit more of that hacking here.</p>
+<pre><code>        filename = m.group(1)
+        dotted = m.group(2)
+        lines = [l.rstrip() for l in open(filename).readlines()]
+        m, n = lookups[filename][dotted]
+        for l in lines[m-1:n]:
+            result.append('    ' + l)
+</code></pre></html>
