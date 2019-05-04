@@ -4,8 +4,8 @@ A guy named Luciano <Something> talked about sets in Python and how they
 represented a well-designed API worthy of study. Some things I did not know
 about sets:
 
-   a < b     means set a is a proper subset of set b
-   a <= b    means a is an improper subset: either a subset, or equal to, B
+* `a < b` means set a is a proper subset of set b
+* `a <= b` means a is an improper subset: either a subset, or equal to, B
 
 ## Book recommendations
 
@@ -23,6 +23,37 @@ sense of "interface")
 
 The PyMOTW page gives a good description of how ABCs work. It is really not
 very tricky.
+
+```python
+import abc
+
+class PluginBase(object):
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def load(self, input):
+        """Retrieve data from the input source and return an object."""
+        return
+
+    @abc.abstractmethod
+    def save(self, output, data):
+        """Save the data object to the output."""
+        return
+
+class RegisteredImplementation(object):
+
+    def load(self, input):
+        return input.read()
+
+    def save(self, output, data):
+        return output.write(data)
+
+PluginBase.register(RegisteredImplementation)
+
+if __name__ == '__main__':
+    print 'Subclass:', issubclass(RegisteredImplementation, PluginBase)
+    print 'Instance:', isinstance(RegisteredImplementation(), PluginBase)
+```
 
 Another thing is asyncio and "await". Oh wait, asyncio is a Python 3 thing.
 
