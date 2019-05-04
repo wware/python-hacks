@@ -11,7 +11,10 @@ import os
 import pydoc
 import sys
 import unittest
-from unittest.mock import MagicMock, patch, call
+try:
+    from unittest.mock import MagicMock, patch, call
+except ImportError:
+    from mock import MagicMock, patch, call
 
 
 #############################################
