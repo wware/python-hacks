@@ -122,23 +122,28 @@ class MyTestCase(unittest.TestCase):
         patcher = patch('__main__.Foo', spec=True)
         assert not isinstance(Foo, MagicMock)
         assert Foo is RealFoo
-        patcher.start()
-        assert isinstance(Foo, MagicMock)
-        assert Foo is not RealFoo
-        instance = Foo()
-        assert isinstance(instance, RealFoo)
-        assert hasattr(instance, 'add_five')
-        assert isinstance(instance.add_five, MagicMock)
-        # instance.add_five method is a mock, but let's try calling it anyway
-        six_plus_five = instance.add_five(6)
-        assert isinstance(six_plus_five, MagicMock)
-        with self.assertRaises(Exception):
-            # instance.add_five is a mock, so it doesn't know it should add 5
-            assert six_plus_five == 11
-        # FUN FACT - if we hit an exception before reaching this "patcher.stop()"
-        # statement, then Foo will never be unmocked, so test_z_normal_foo_behavior()
-        # will fail
-        patcher.stop()
+        try:
+            patcher.start()
+            assert isinstance(Foo, MagicMock)
+            assert Foo is not RealFoo
+            import inspect
+            assert False, inspect.getmro(Foo)
+            assert issubclass(Foo.__class__, RealFoo.__class__)
+            instance = Foo()
+            assert isinstance(instance, RealFoo)
+            assert hasattr(instance, 'add_five')
+            assert isinstance(instance.add_five, MagicMock)
+            # instance.add_five method is a mock, but let's try calling it anyway
+            six_plus_five = instance.add_five(6)
+            assert isinstance(six_plus_five, MagicMock)
+            with self.assertRaises(Exception):
+                # instance.add_five is a mock, so it doesn't know it should add 5
+                assert six_plus_five == 11
+        finally:
+            # FUN FACT - if we hit an exception before reaching this "patcher.stop()"
+            # statement, then Foo will never be unmocked, so test_z_normal_foo_behavior()
+            # will fail
+            patcher.stop()
         assert Foo is RealFoo
         assert instance.method_calls == [call.add_five(6)]
 
