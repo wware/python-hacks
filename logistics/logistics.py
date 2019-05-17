@@ -88,33 +88,20 @@ class Move(object):
             return 1
 
     def is_valid(self):
-        first, second, people = self._first, self._second, [i for i in self._items if isinstance(i, Person)]
-        # Lori cannot drive into Boston by herself
-        if second in ('NEBH', 'MGH') and people == [lori]:
-            return False
-        # If Sue drives into Boston, Lori is with her
-        if second in ('NEBH', 'MGH') and sue in people and lori not in people:
-            return False
-        # Don't drive Will to Sue's house
-        if second == "Sue's house" and will in people:
-            return False
-        return True
-
-######################################################################
-
+        return True    # base class, moves are always valid
 
 def eq(x, y):
     def f(z):
         return {k: set(v) for k, v in z.items()}
-    return f(x) == f(y)
 
+    return f(x) == f(y)
 
 def clone(places):
     return {k: v[:] for k, v in places.items()}
 
-
-def change_state(places, desired):
+def change_state(places, desired, moveClass=Move):
     before = clone(places)
+
     def layer(trajectories, target):
         winners = []
         new_trajectories = []
@@ -122,7 +109,7 @@ def change_state(places, desired):
             config = clone(before)
             for move in t:
                 move.go(config)
-            for next_move in Move.enumerate(config):
+            for next_move in moveClass.enumerate(config):
                 config2 = clone(config)
                 new_trajectory = t + [next_move]
                 next_move.go(config2)
@@ -152,8 +139,11 @@ def change_state(places, desired):
     winners.sort(cmp_func)
     return winners[0]
 
-######################################################################
 
+######################################################################
+# Stuff specific to my near-term logistical challenges
+
+PLACENAMES = ["CWV", "NEBH", "MGH", "Will's house", "Lori's house", "Sue's house"]
 
 lori = Person("Lori")
 will = Person("Will")
@@ -164,7 +154,20 @@ wcar = Car(will)
 scar = Car(sue)
 
 
-PLACENAMES = ["CWV", "NEBH", "MGH", "Will's house", "Lori's house", "Sue's house"]
+class ThisMove(Move):
+    def is_valid(self):
+        first, second, people = self._first, self._second, [i for i in self._items if isinstance(i, Person)]
+        # Lori cannot drive into Boston by herself
+        if second in ('NEBH', 'MGH') and people == [lori]:
+            return False
+        # If Sue drives into Boston, Lori is with her
+        if second in ('NEBH', 'MGH') and sue in people and lori not in people:
+            return False
+        # Don't drive Will or Lori to Sue's house
+        if second == "Sue's house" and (will in people or lori in people):
+            return False
+        return True
+
 
 def stuff_at(d):
     rd = {k: [] for k in PLACENAMES}
@@ -190,7 +193,7 @@ mon_4pm = stuff_at({
 })
 
 print "Monday 4pm: Get Lori to MGH"
-pprint.pprint(change_state(initial, mon_4pm))
+pprint.pprint(change_state(initial, mon_4pm, moveClass=ThisMove))
 
 both_at_wills_house = stuff_at({
     "Will's house": [will, wcar, lori, lcar],
@@ -198,7 +201,7 @@ both_at_wills_house = stuff_at({
 
 print
 print "Monday night, Will and Lori go back to Will's house"
-pprint.pprint(change_state(mon_4pm, both_at_wills_house))
+pprint.pprint(change_state(mon_4pm, both_at_wills_house, moveClass=ThisMove))
 
 before_surgery = stuff_at({
     'NEBH': [will, sue, scar, lori],
@@ -207,7 +210,7 @@ before_surgery = stuff_at({
 
 print
 print "Tuesday morning, Will and Lori get a ride from Sue to NEBH"
-pprint.pprint(change_state(both_at_wills_house, before_surgery))
+pprint.pprint(change_state(both_at_wills_house, before_surgery, moveClass=ThisMove))
 
 will_alone_at_nebh = stuff_at({
     'NEBH': [will],
@@ -217,7 +220,7 @@ will_alone_at_nebh = stuff_at({
 
 print
 print "Tuesday night, Will stays at NEBH, everybody else goes home"
-pprint.pprint(change_state(before_surgery, will_alone_at_nebh))
+pprint.pprint(change_state(before_surgery, will_alone_at_nebh, moveClass=ThisMove))
 
 thursday_night = stuff_at({
     "Will's house": [wcar, lcar, will, lori],
@@ -225,7 +228,7 @@ thursday_night = stuff_at({
 
 print
 print "Thursday night, Lori stays over to help Will recover"
-pprint.pprint(change_state(will_alone_at_nebh, thursday_night))
+pprint.pprint(change_state(will_alone_at_nebh, thursday_night, moveClass=ThisMove))
 
 final = stuff_at({
     "Lori's house": [lori, lcar],
@@ -233,5 +236,5 @@ final = stuff_at({
 })
 
 print
-print "Sunday night, Lori and Will each go home"
-pprint.pprint(change_state(thursday_night, final))
+print "Sunday night, Lori goes home"
+pprint.pprint(change_state(thursday_night, final, moveClass=ThisMove))
