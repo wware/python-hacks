@@ -4,18 +4,6 @@ import pprint
 import random
 
 
-# places
-
-places = {
-    'CWV': [],
-    'NEBH': [],
-    'MGH': [],
-    "Will's house": [],
-    "Lori's house": [],
-    "Sue's house": []
-}
-
-
 class Thing(object):
     def __init__(self, name):
         self._name = name
@@ -24,7 +12,7 @@ class Thing(object):
         return "{0}".format(self._name)
 
     @classmethod
-    def at(cls, placename):
+    def at(cls, places, placename):
         return [x for x in places[placename] if isinstance(x, cls)]
 
 
@@ -37,9 +25,11 @@ class Car(Thing):
         assert isinstance(owner, Person)
         Thing.__init__(self, owner)
 
+    def owner(self):
+        return self._name
+
     def __repr__(self):
-        # self._name is actually a Person, not a string
-        return "{0}'s car".format(self._name._name)
+        return "{0}'s car".format(self.owner()._name)
 
 
 class Move(object):
@@ -49,14 +39,120 @@ class Move(object):
         self._items = items
 
     def __repr__(self):
-        return "\n{0} goes from {1} to {2}".format(self._items, self._first, self._second)
+        return "{0} goes from {1} to {2}".format(self._items, self._first, self._second)
 
-    def go(self):
-        print self
+    def go(self, places):
         for item in self._items:
-            assert item in places[self._first], (item, self._first)
+            assert item in places[self._first], (self, item, self._first)
             places[self._first].remove(item)
             places[self._second].append(item)
+
+    @classmethod
+    def enumerate(cls, places):
+        def all_subsets(g):
+            results = []
+            n = len(g)
+            for i in range(1, 2 ** n):
+                this_subset = []
+                for j in range(n):
+                    if (1 << j) & i:
+                        this_subset.append(g[j])
+                results.append(this_subset)
+            return results
+
+        for placename in places.keys():
+            these_cars = Car.at(places, placename)
+            if len(these_cars) == 0:
+                continue
+            people = Person.at(places, placename)
+            if len(people) == 0:
+                continue
+            destinations = [p for p in places.keys() if p != placename]
+            groupings = all_subsets(people)
+            for car in these_cars:
+                for grouping in groupings:
+                    for dest in destinations:
+                        move = cls(placename, dest, grouping + [car])
+                        if move.is_valid():
+                            yield move
+
+    def demerit(self):
+        # a move gets a demerit if somebody is driving somebody else's car
+        cars = [i for i in self._items if isinstance(i, Car)]
+        assert len(cars) == 1
+        car = cars[0]
+        people = [i for i in self._items if isinstance(i, Person)]
+        if car.owner() in people:
+            return 0
+        else:
+            return 1
+
+    def is_valid(self):
+        first, second, people = self._first, self._second, [i for i in self._items if isinstance(i, Person)]
+        # Lori cannot drive into Boston by herself
+        if second in ('NEBH', 'MGH') and people == [lori]:
+            return False
+        # If Sue drives into Boston, Lori is with her
+        if second in ('NEBH', 'MGH') and sue in people and lori not in people:
+            return False
+        # Don't drive Will to Sue's house
+        if second == "Sue's house" and will in people:
+            return False
+        return True
+
+######################################################################
+
+
+def eq(x, y):
+    def f(z):
+        return {k: set(v) for k, v in z.items()}
+    return f(x) == f(y)
+
+
+def clone(places):
+    return {k: v[:] for k, v in places.items()}
+
+
+def change_state(places, desired):
+    before = clone(places)
+    def layer(trajectories, target):
+        winners = []
+        new_trajectories = []
+        for t in trajectories:
+            config = clone(before)
+            for move in t:
+                move.go(config)
+            for next_move in Move.enumerate(config):
+                config2 = clone(config)
+                new_trajectory = t + [next_move]
+                next_move.go(config2)
+                if eq(config2, target):
+                    winners.append(new_trajectory)
+                new_trajectories.append(new_trajectory)
+        return winners, new_trajectories
+
+    trajectories = [[]]
+    winners = []
+    while not winners:
+        winners, trajectories = layer(trajectories, desired)
+
+    def cmp_func(path1, path2):
+        if len(path1) < len(path2):
+            return -1
+        if len(path1) > len(path2):
+            return 1
+        demerits1 = sum([move.demerit() for move in path1])
+        demerits2 = sum([move.demerit() for move in path2])
+        if demerits1 < demerits2:
+            return -1
+        if demerits1 > demerits2:
+            return 1
+        return 0
+
+    winners.sort(cmp_func)
+    return winners[0]
+
+######################################################################
 
 
 lori = Person("Lori")
@@ -68,81 +164,74 @@ wcar = Car(will)
 scar = Car(sue)
 
 
-def random_move():
-    def non_empty_subset(g):
-        assert len(g) > 0
-        while True:
-            sg = [x for x in g if random.choice([True, False])]
-            if len(sg) > 0:
-                return sg
+PLACENAMES = ["CWV", "NEBH", "MGH", "Will's house", "Lori's house", "Sue's house"]
 
-    tries = 0
-    while True:
-        try:
-            firsts = []
-            for k in places.keys():
-                if len(Car.at(k)) > 0 and len(Person.at(k)) > 0:
-                    firsts.append(k)
-            first = random.choice(firsts)
-            car = random.choice(Car.at(first))
-            people = non_empty_subset(Person.at(first))
-            second = random.choice([sec for sec in places.keys() if sec != first])
-            move = Move(first, second, people + [car])
+def stuff_at(d):
+    rd = {k: [] for k in PLACENAMES}
+    rd.update(d)
+    # If Sue and Sue's car are not explicitly specified, put them at Sue's house
+    for s in (sue, scar):
+        if not [place for name, place in rd.items() if s in place and name != "Sue's house"]:
+            rd["Sue's house"].append(s)
+    return rd
 
-            # Lori cannot drive into Boston by herself
-            assert not (people == [lori] and second in ('NEBH', 'MGH')),\
-                "Lori cannot drive into Boston by herself - {0}".format(move)
+######################################################################
+#    Finally, solve the actual problem
+######################################################################
 
-            return move
-        except InvalidMove:
-            tries += 1
-            if tries == 10000:
-                raise Exception("Maybe no good moves??\n" + pprint.pformat(places))
+initial = stuff_at({
+    "CWV": [lori, lcar],
+    "Will's house": [will, wcar],
+})
 
+mon_4pm = stuff_at({
+    'CWV': [lcar],
+    'MGH': [will, wcar, lori],
+})
 
-def pause(info):
-    print
-    print info
-    pprint.pprint(places)
+print "Monday 4pm: Get Lori to MGH"
+pprint.pprint(change_state(initial, mon_4pm))
 
+both_at_wills_house = stuff_at({
+    "Will's house": [will, wcar, lori, lcar],
+})
 
-# initial state
-places["CWV"] = [lori, lcar]
-places["NEBH"] = []
-places["MGH"] = []
-places["Will's house"] = [will, wcar]
-places["Lori's house"] = []
-places["Sue's house"] = [sue, scar]
+print
+print "Monday night, Will and Lori go back to Will's house"
+pprint.pprint(change_state(mon_4pm, both_at_wills_house))
 
-pause("Monday afternoon before MGH appointment")
-Move("Will's house", "CWV", [will, wcar]).go()
-Move("CWV", "MGH", [will, lori, wcar]).go()
-assert lori in places["MGH"]
-Move("MGH", "CWV", [will, lori, wcar]).go()
-Move("CWV", "Will's house", [will, wcar]).go()
-Move("CWV", "Will's house", [lori, lcar]).go()
-pause("Monday night")
+before_surgery = stuff_at({
+    'NEBH': [will, sue, scar, lori],
+    "Will's house": [wcar, lcar]
+})
 
-Move("Sue's house", "Will's house", [sue, scar]).go()
-pause("Tuesday morning")
+print
+print "Tuesday morning, Will and Lori get a ride from Sue to NEBH"
+pprint.pprint(change_state(both_at_wills_house, before_surgery))
 
-Move("Will's house", "NEBH", [will, lori, sue, scar]).go()
-assert will in places["NEBH"]
-pause("Will surgery")
-Move("NEBH", "Will's house", [lori, sue, scar]).go()
+will_alone_at_nebh = stuff_at({
+    'NEBH': [will],
+    "Will's house": [wcar],
+    "Lori's house": [lcar, lori],   # Lori has work on Monday
+})
 
-Move("Will's house", "Sue's house", [sue, scar]).go()
-Move("Will's house", "Lori's house", [lori, lcar]).go()
+print
+print "Tuesday night, Will stays at NEBH, everybody else goes home"
+pprint.pprint(change_state(before_surgery, will_alone_at_nebh))
 
-pause("Thursday morning and Will is ready to go home")
-Move("Lori's house", "Will's house", [lori, lcar]).go()
-Move("Sue's house", "Will's house", [sue, scar]).go()
-Move("Will's house", "NEBH", [lori, sue, scar]).go()
-Move("NEBH", "Will's house", [will, lori, sue, scar]).go()
-Move("Will's house", "Sue's house", [sue, scar]).go()
-pause("Thursday night")
+thursday_night = stuff_at({
+    "Will's house": [wcar, lcar, will, lori],
+})
 
-pause("Sunday night and Lori has work the next day")
-Move("Will's house", "Lori's house", [lori, lcar]).go()
-pause("Starting the work week")
-assert lori in places["Lori's house"]
+print
+print "Thursday night, Lori stays over to help Will recover"
+pprint.pprint(change_state(will_alone_at_nebh, thursday_night))
+
+final = stuff_at({
+    "Lori's house": [lori, lcar],
+    "Will's house": [will, wcar],
+})
+
+print
+print "Sunday night, Lori and Will each go home"
+pprint.pprint(change_state(thursday_night, final))
