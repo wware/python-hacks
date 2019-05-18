@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 
 import pprint
-import random
+import logging
+import sys
+import yaml
+
+logging.basicConfig(format='%(asctime)-15s  %(levelname)s  %(filename)s:%(lineno)d  %(message)s',
+                    level=logging.DEBUG, stream=sys.stdout)
 
 
 class Thing(object):
@@ -21,15 +26,11 @@ class Person(Thing):
 
 
 class Car(Thing):
-    def __init__(self, owner):
-        assert isinstance(owner, Person)
-        Thing.__init__(self, owner)
-
     def owner(self):
-        return self._name
+        return getattr(self, '_owner', None)
 
     def __repr__(self):
-        return "{0}'s car".format(self.owner()._name)
+        return "{0}'s car".format(self._name)
 
 
 class Move(object):
@@ -99,45 +100,36 @@ def eq(x, y):
 def clone(places):
     return {k: v[:] for k, v in places.items()}
 
-def change_state(places, desired, moveClass=Move):
-    before = clone(places)
 
-    def layer(trajectories, target):
-        winners = []
-        new_trajectories = []
-        for t in trajectories:
-            config = clone(before)
-            for move in t:
-                move.go(config)
-            for next_move in moveClass.enumerate(config):
-                config2 = clone(config)
-                new_trajectory = t + [next_move]
-                next_move.go(config2)
-                if eq(config2, target):
-                    winners.append(new_trajectory)
-                new_trajectories.append(new_trajectory)
-        return winners, new_trajectories
-
-    trajectories = [[]]
+def layer(trajectories, target, before, moveClass):
     winners = []
-    while not winners:
-        winners, trajectories = layer(trajectories, desired)
+    new_trajectories = []
+    for t in trajectories:
+        config = clone(before)
+        for move in t:
+            move.go(config)
+        for next_move in moveClass.enumerate(config):
+            config2 = clone(config)
+            new_trajectory = t + [next_move]
+            next_move.go(config2)
+            if eq(config2, target):
+                winners.append(new_trajectory)
+            new_trajectories.append(new_trajectory)
+    return winners, new_trajectories
 
-    def cmp_func(path1, path2):
-        if len(path1) < len(path2):
-            return -1
-        if len(path1) > len(path2):
-            return 1
-        demerits1 = sum([move.demerit() for move in path1])
-        demerits2 = sum([move.demerit() for move in path2])
-        if demerits1 < demerits2:
-            return -1
-        if demerits1 > demerits2:
-            return 1
-        return 0
 
-    winners.sort(cmp_func)
-    return winners[0]
+def cmp_func(path1, path2):
+    if len(path1) < len(path2):
+        return -1
+    if len(path1) > len(path2):
+        return 1
+    demerits1 = sum([move.demerit() for move in path1])
+    demerits2 = sum([move.demerit() for move in path2])
+    if demerits1 < demerits2:
+        return -1
+    if demerits1 > demerits2:
+        return 1
+    return 0
 
 
 ######################################################################
@@ -153,22 +145,6 @@ lcar = Car(lori)
 wcar = Car(will)
 scar = Car(sue)
 
-
-class ThisMove(Move):
-    def is_valid(self):
-        first, second, people = self._first, self._second, [i for i in self._items if isinstance(i, Person)]
-        # Lori cannot drive into Boston by herself
-        if second in ('NEBH', 'MGH') and people == [lori]:
-            return False
-        # If Sue drives into Boston, Lori is with her
-        if second in ('NEBH', 'MGH') and sue in people and lori not in people:
-            return False
-        # Don't drive Will or Lori to Sue's house
-        if second == "Sue's house" and (will in people or lori in people):
-            return False
-        return True
-
-
 def stuff_at(d):
     rd = {k: [] for k in PLACENAMES}
     rd.update(d)
@@ -182,59 +158,121 @@ def stuff_at(d):
 #    Finally, solve the actual problem
 ######################################################################
 
-initial = stuff_at({
-    "CWV": [lori, lcar],
-    "Will's house": [will, wcar],
-})
+def moveBuilder(lookup):
+    class ThisMove(Move):
+        def is_valid(self):
+            first, second, people = self._first, self._second, [i for i in self._items if isinstance(i, Person)]
+            # Lori cannot drive into Boston by herself
+            if second in ('NEBH', 'MGH') and people == [lookup['Lori']]:
+                return False
+            # If Sue drives into Boston, Lori is with her
+            if second in ('NEBH', 'MGH') and lookup['Sue'] in people and lookup['Lori'] not in people:
+                return False
+            # Don't drive Will or Lori to Sue's house
+            if second == "Sue's house" and (lookup['Will'] in people or lookup['Lori'] in people):
+                return False
+            return True
+    return ThisMove
 
-mon_4pm = stuff_at({
-    'CWV': [lcar],
-    'MGH': [will, wcar, lori],
-})
 
-print "Monday 4pm: Get Lori to MGH"
-pprint.pprint(change_state(initial, mon_4pm, moveClass=ThisMove))
+def main(problem_specification):
+    info = yaml.load(problem_specification, Loader=yaml.SafeLoader)
+    # logging.debug("\n" + pprint.pformat(info))
 
-both_at_wills_house = stuff_at({
-    "Will's house": [will, wcar, lori, lcar],
-})
+    placenames = info['places']
+    people = []
+    cars = []
+    lookup = {}
 
-print
-print "Monday night, Will and Lori go back to Will's house"
-pprint.pprint(change_state(mon_4pm, both_at_wills_house, moveClass=ThisMove))
+    for name in info['people']:
+        p = Person(name)
+        people.append(p)
+        c = Car(name)
+        c._owner = p
+        cars.append(c)
+        lookup[repr(p)] = p
+        lookup[repr(c)] = c
 
-before_surgery = stuff_at({
-    'NEBH': [will, sue, scar, lori],
-    "Will's house": [wcar, lcar]
-})
+    thisMove = moveBuilder(lookup)
 
-print
-print "Tuesday morning, Will and Lori get a ride from Sue to NEBH"
-pprint.pprint(change_state(both_at_wills_house, before_surgery, moveClass=ThisMove))
+    def config(step):
+        step = step.copy()
+        step.pop('description')
+        assert set(step.keys()) <= set(placenames), step.keys()
+        places = {name: [] for name in placenames}
+        places.update({k: map(lambda z: lookup[z], v) for k, v in step.items()})
+        return places
 
-will_alone_at_nebh = stuff_at({
-    'NEBH': [will],
-    "Will's house": [wcar],
-    "Lori's house": [lcar, lori],   # Lori has work on Monday
-})
 
-print
-print "Tuesday night, Will stays at NEBH, everybody else goes home"
-pprint.pprint(change_state(before_surgery, will_alone_at_nebh, moveClass=ThisMove))
+    initial = info['steps'][0]
+    print '### ' + initial['description']
+    pprint.pprint({k: v for k, v in initial.items() if k != 'description'})
 
-thursday_night = stuff_at({
-    "Will's house": [wcar, lcar, will, lori],
-})
+    previous = None
+    for step1, step2 in zip(info['steps'][:-1], info['steps'][1:]):
+        cfg1 = config(step1)
+        cfg2 = config(step2)
+        assert previous is None or previous == cfg1
+        before = clone(cfg1)
+        trajectories = [[]]
+        winners = []
+        while not winners:
+            winners, trajectories = layer(trajectories, cfg2, before, thisMove)
+        winners.sort(cmp_func)
+        print
+        print '### ' + step2['description']
+        pprint.pprint(winners[0])
+        previous = cfg2
 
-print
-print "Thursday night, Lori stays over to help Will recover"
-pprint.pprint(change_state(will_alone_at_nebh, thursday_night, moveClass=ThisMove))
 
-final = stuff_at({
-    "Lori's house": [lori, lcar],
-    "Will's house": [will, wcar],
-})
+if __name__ == '__main__':
+    main("""
+people: [Lori, Will, Sue]
+# cars: [Lori, Will, Sue]
+# if cars is not specified, assume each person has a car
 
-print
-print "Sunday night, Lori goes home"
-pprint.pprint(change_state(thursday_night, final, moveClass=ThisMove))
+places: [Lori's house, Will's house, Sue's house, CWV, MGH, NEBH]
+
+# TBD - this replaces moveBuilder
+disallowed_moves:
+    # Lori doesn't drive into Boston alone.
+    - people: [Lori]
+      destination_in: [NEBH, MGH]
+    # Neither does Sue.
+    - people: [Sue]
+      destination_in: [NEBH, MGH]
+    # Lori and Sue never go to Sue's house.
+    - people_include: [Will]
+      destination: Sue's house
+    - people_include: [Lori]
+      destination: Sue's house
+
+steps:
+    - CWV:
+        - Lori
+        - Lori's car
+      Will's house: [Will, Will's car]
+      Sue's house: [Sue, Sue's car]
+      description: Initial state
+    - CWV: [Lori's car]
+      MGH: [Will, Will's car, Lori]
+      Sue's house: [Sue, Sue's car]
+      description: Monday 4pm, get Lori to MGH
+    - Will's house: [Will, Lori, Will's car, Lori's car]
+      Sue's house: [Sue, Sue's car]
+      description: Monday evening, go to Will's house
+    - Will's house: [Will's car, Lori's car]
+      NEBH: [Will, Lori, Sue, Sue's car]
+      description: Tuesday morning, Sue drives us to NEBH
+    - Will's house: [Will's car]
+      NEBH: [Will]
+      Sue's house: [Sue, Sue's car]
+      Lori's house: [Lori, Lori's car]
+      description: Tuesday night, Will stays at NEBH, everybody else goes home
+    - Will's house: [Will's car, Will, Lori, Lori's car]
+      Sue's house: [Sue, Sue's car]
+      description: Thursday night, Lori stays over to help Will recover
+    - Will's house: [Will's car, Will]
+      Lori's house: [Lori, Lori's car]
+      Sue's house: [Sue, Sue's car]
+      description: Sunday night, Lori goes home""")
