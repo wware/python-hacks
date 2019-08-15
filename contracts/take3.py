@@ -116,3 +116,64 @@ with expect_failure():
         quux(0.3, 0.5)
 
 print('OK')
+
+
+
+#################################################
+
+from functools import wraps
+
+
+def pre(expr):
+    def decorator(fn):
+        fc = fn.func_code
+        argnames = fc.co_varnames[:fc.co_argcount]
+        @wraps(fn)
+        def inner(*args, **kw):
+            vars = dict(zip(argnames, args))
+            vars.update(kw)
+            assert eval(expr, vars.copy()), "\nPrecondition failed: {0}\n{1}".format(
+                expr,
+                ", ".join(["{0} = {1}".format(k, v) for k, v in vars.items()])
+            )
+            return fn(*args, **kw)
+        return inner
+    return decorator
+
+
+def post(expr):
+    def decorator(fn):
+        fc = fn.func_code
+        argnames = fc.co_varnames[:fc.co_argcount]
+        @wraps(fn)
+        def inner(*args, **kw):
+            vars = dict(zip(argnames, args))
+            vars.update(kw)
+            vars['retval'] = retval = fn(*args, **kw)
+            assert eval(expr, vars.copy()), "\nPostcondition failed: {0}\n{1}".format(
+                expr,
+                ", ".join(["{0} = {1}".format(k, v) for k, v in vars.items()])
+            )
+            return retval
+        return inner
+    return decorator
+
+
+@pre("x * x + y * y < 1.000000001")
+@post("isinstance(retval, str)")
+def quux(x, y):
+    if _bad_return_value:
+        return 19
+    else:
+        return 'some return value'
+
+
+quux(1, 0)
+
+with expect_failure():
+    quux(1, 2)
+
+
+with expect_failure():
+    with misbehave():
+        quux(0.3, 0.5)
