@@ -10,7 +10,7 @@ def env_var(x):
     return os.environ.get(x, '') == '1'
 
 
-class ContractViolation(Exception):
+class ContractViolation(AssertionError):
     pass
 
 
@@ -35,7 +35,6 @@ def enforce_contract(func):
     what the function will deliver. Invariants are promises to avoid causing
     side effects. Contracts go in docstrings and are specified in YAML.
 
-    <contract>
     pre:
       - isinstance(a, int)
       - isinstance(b, float)
@@ -51,7 +50,6 @@ def enforce_contract(func):
     invariant:
       # things that should not be changed by this function
       - len(state_capitals)
-    </contract>
 
     If you write functions with contracts and you want to switch them off for
     performance reasons, run Python with the "-O" option, setting the __debug__
@@ -80,36 +78,33 @@ def enforce_contract(func):
                 yaml_lines = yaml_lines[:-1]
     co = func.func_code
     arg_names = co.co_varnames
+    _globals = inspect.currentframe(1).f_globals
 
     @wraps(func)
     def inner(*args, **kw):
-        _globals = {}
-        for i in range(8):
-            _globals.update(inspect.currentframe(1).f_globals)
         _locals = dict(zip(arg_names, args))
         _locals.update(kw)
 
-        def evaluate(c, _locals=_locals, _globals=_globals):
+        def evaluate(c, ouch, _locals=_locals, _globals=_globals):
             try:
                 return eval(c, _globals, _locals)
-            except:
-                logging.error(pprint.pformat((p, _locals, _globals)))
-                raise
+            except Exception as e:
+                raise ouch(pprint.pformat((e, p, _locals, _globals)))
 
         inv = {}
         for i, p in enumerate(contracts.get('invariant', [])):
-            inv[i] = evaluate(p)
+            inv[i] = evaluate(p, InvariantChanged)
         for p in contracts.get('pre', []):
-            if not evaluate(p):
+            if not evaluate(p, PreConditionFailed):
                 raise PreConditionFailed("\n" + pprint.pformat((p, _locals, _globals)))
         return_val = func(*args, **kw)
         _locals['RETURN'] = return_val
         for i, p in enumerate(contracts.get('invariant', [])):
-            newer = evaluate(p)
+            newer = evaluate(p, InvariantChanged)
             if inv[i] != newer:
                 raise InvariantChanged("\n" + pprint.pformat((p, inv[i], newer)))
         for p in contracts.get('post', []):
-            if not evaluate(p):
+            if not evaluate(p, PostConditionFailed):
                 raise PostConditionFailed("\n" + pprint.pformat((p, return_val, _locals, _globals)))
         return return_val
     return inner
