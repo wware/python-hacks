@@ -1,5 +1,7 @@
 import pprint
+import inspect
 import os
+import re
 import yaml
 from functools import wraps
 
@@ -8,47 +10,107 @@ def env_var(x):
     return os.environ.get(x, '') == '1'
 
 
-class PreConditionFailed(AssertionError):
+class ContractViolation(Exception):
     pass
 
 
-class PostConditionFailed(AssertionError):
+class PreConditionFailed(ContractViolation):
     pass
 
 
-class InvariantChanged(AssertionError):
+class PostConditionFailed(ContractViolation):
+    pass
+
+
+class InvariantChanged(ContractViolation):
     pass
 
 
 def enforce_contract(func):
+    """
+    This is a decorator for functions that enforce contractual agreements.
+    Functions define a contract with the code that calls them by creating
+    pre- and post-conditions and invariants. The pre-conditions are things the
+    function requires of the calling code, and post-conditions are promises of
+    what the function will deliver. Invariants are promises to avoid causing
+    side effects. Contracts go in docstrings and are specified in YAML.
+
+    <contract>
+    pre:
+      - isinstance(a, int)
+      - isinstance(b, float)
+      - isinstance(c, complex)
+      - isinstance(x, dict)
+      - isinstance(y, list)
+      - isinstance(z, tuple)
+      - (a ** 2 + b ** 2 + (c ** 2).real) < 2500
+      - len(y) > 3
+      - all([isinstance(y, str) for z in y])
+    post:
+      - (RETURN ** 2 + a ** 2) > 16
+    invariant:
+      # things that should not be changed by this function
+      - len(state_capitals)
+    </contract>
+
+    If you write functions with contracts and you want to switch them off for
+    performance reasons, run Python with the "-O" option, setting the __debug__
+    variable to False.
+    """
     if not __debug__:
         return func
-    lines = [L for L in func.__doc__.split('\n') if len(L) > 0]
-    m = [i for (i, L) in enumerate(lines) if "<contract>" in L][0]
-    n = [i for (i, L) in enumerate(lines) if "</contract>" in L][0]
-    dbc_stuff = yaml.load('\n'.join(lines[m+1:n]))
+    lines = [L.rstrip() for L in func.__doc__.split('\n')]
+    headers = set(['pre', 'post', 'invariant'])
+    contracts = {}
+    while headers:
+        h = headers.pop()
+        p = [i for (i, L) in enumerate(lines) if re.search(h + ":$", L)]
+        if p:
+            yaml_lines = lines[p[0]:]
+            while len(yaml_lines) > 1:
+                try:
+                    contracts.update(yaml.load(
+                        "\n".join(yaml_lines),
+                        Loader=yaml.SafeLoader
+                    ))
+                    headers = headers.difference(contracts.keys())
+                    break
+                except:
+                    pass
+                yaml_lines = yaml_lines[:-1]
     co = func.func_code
     arg_names = co.co_varnames
 
     @wraps(func)
     def inner(*args, **kw):
+        _globals = {}
+        for i in range(8):
+            _globals.update(inspect.currentframe(1).f_globals)
         _locals = dict(zip(arg_names, args))
         _locals.update(kw)
+
+        def evaluate(c, _locals=_locals, _globals=_globals):
+            try:
+                return eval(c, _globals, _locals)
+            except:
+                logging.error(pprint.pformat((p, _locals, _globals)))
+                raise
+
         inv = {}
-        for i, p in enumerate(dbc_stuff['invariant']):
-            inv[i] = eval(p, globals(), _locals)
-        for p in dbc_stuff['pre']:
-            if not eval(p, globals(), _locals):
-                raise PreConditionFailed(p)
+        for i, p in enumerate(contracts.get('invariant', [])):
+            inv[i] = evaluate(p)
+        for p in contracts.get('pre', []):
+            if not evaluate(p):
+                raise PreConditionFailed("\n" + pprint.pformat((p, _locals, _globals)))
         return_val = func(*args, **kw)
         _locals['RETURN'] = return_val
-        for i, p in enumerate(dbc_stuff['invariant']):
-            newer = eval(p, globals(), _locals)
+        for i, p in enumerate(contracts.get('invariant', [])):
+            newer = evaluate(p)
             if inv[i] != newer:
-                raise InvariantChanged((p, inv[i], newer))
-        for p in dbc_stuff['post']:
-            if not eval(p, globals(), _locals):
-                raise PostConditionFailed(p)
+                raise InvariantChanged("\n" + pprint.pformat((p, inv[i], newer)))
+        for p in contracts.get('post', []):
+            if not evaluate(p):
+                raise PostConditionFailed("\n" + pprint.pformat((p, return_val, _locals, _globals)))
         return return_val
     return inner
 
@@ -61,9 +123,11 @@ state_capitals = ['Boston', 'Hartford']
 @enforce_contract
 def example_function(a, b, c, x, y, z, plugh=None):
     """
-    Random useless information about the function...
+    Random information about the function...
 
-    <contract>
+    Pre-conditions can simply be the types of arguments, or they can
+    talk about multiple arguments at a time, for instance something like
+    "the point (x, y) needs to be inside the unit circle"
     pre:
         - isinstance(a, int)
         - isinstance(b, float)
@@ -74,13 +138,17 @@ def example_function(a, b, c, x, y, z, plugh=None):
         - (a ** 2 + b ** 2 + (c ** 2).real) < 2500
         - len(y) > 3
         - isinstance(y[0], str)
+
+    Post-conditions are promises that the function makes to the calling
+    code, provided the pre-conditions are all met.
     post:
         - (RETURN ** 2 + a ** 2) > 16
+
+    The purpose of invariants is to show that a function avoids undesirable
+    side effects.
     invariant:
         # things that should not be changed by this function
         - len(state_capitals)
-    </contract>
-
     """
     # use x, y, and z, for nothing, to avoid a pycharm warning
     x.update({'silly': y + list(z), 'extra': plugh})
