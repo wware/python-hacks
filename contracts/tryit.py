@@ -102,24 +102,24 @@ def extract_contracts(docstr):
 __inv_stack = []
 
 
-def check_pre_conditions(locals=None, docstr=None):
-    fr = inspect.currentframe(1)
+def check_pre_conditions(locals=None, docstr=None, frame_offset=1):
+    fr = inspect.currentframe(frame_offset)
     if locals is None:
         locals = fr.f_locals
     if docstr is None:
         docstr = fr.f_globals[fr.f_code.co_name].__doc__
     contracts = extract_contracts(docstr)
     for p in contracts.get('pre', []):
-        if not eval(p, globals(), locals):
+        if not eval(p, fr.f_globals, locals):
             raise PreConditionFailed(p)
     inv = []
     for p in contracts.get('invariant', []):
-        inv.append(eval(p, globals(), {}))
+        inv.append(eval(p, fr.f_globals, {}))
     __inv_stack.append(tuple(inv))
 
 
-def check_post_conditions(ret_val, locals=None, docstr=None):
-    fr = inspect.currentframe(1)
+def check_post_conditions(ret_val, locals=None, docstr=None, frame_offset=1):
+    fr = inspect.currentframe(frame_offset)
     if locals is None:
         locals = fr.f_locals
     if docstr is None:
@@ -128,11 +128,11 @@ def check_post_conditions(ret_val, locals=None, docstr=None):
     locals = locals.copy()
     locals['RETURN'] = ret_val
     for p in contracts.get('post', []):
-        if not eval(p, globals(), locals):
+        if not eval(p, fr.f_globals, locals):
             raise PostConditionFailed(p)
     inv = __inv_stack.pop()
     for old, p in zip(inv, contracts.get('invariant', [])):
-        x = eval(p, globals(), {})
+        x = eval(p, fr.f_globals, {})
         if old != x:
             raise InvariantChanged(p)
 
@@ -173,12 +173,12 @@ def enforce_contract(func):
         locals = dict(zip(func.func_code.co_varnames, args))
         locals.update(kw)
         return locals
-    
+
     @wraps(func)
     def inner(*args, **kw):
-        check_pre_conditions(make_locals(args, kw), func.__doc__)
+        check_pre_conditions(make_locals(args, kw), func.__doc__, 2)
         return_val = func(*args, **kw)
-        check_post_conditions(return_val, make_locals(args, kw), func.__doc__)
+        check_post_conditions(return_val, make_locals(args, kw), func.__doc__, 2)
         return return_val
     return inner
 
