@@ -76,6 +76,147 @@ class InvariantChanged(ContractViolation):
     pass
 
 
+__inv_stack = []
+
+
+def check_pre_conditions(locals=None, docstr=None, frame_offset=1):
+    def _compile(expr):
+        try:
+            return compile(expr, "<string>", "eval")
+        except Exception as e:
+            raise e.__class__(expr)
+
+    """
+    When using decorator:
+      - locals are passed in, and represent arguments, WORKS OK
+      - docstring is passed in, WORKS OK
+      - function name seems WRONG -- wraps(func) is not working right???
+      - inspect.currentframe(xxx) is pulling from the ... oh yeah ... fix this
+      - I want the frame in which the decorated function is defined so PASS THAT IN
+         - can I derive locals and docstr from that frame??? yes I can
+         - if I DO NOT get said frame, locals and docstr come from the frame
+           that called me
+    """
+
+    fr = inspect.currentframe(frame_offset)
+    if not fr.f_locals.has_key('__co_contracts'):
+        if locals is None:
+            locals = fr.f_locals
+        if docstr is None:
+            docstr = fr.f_globals[fr.f_code.co_name].__doc__
+        globals = {}
+        for i in range(frame_offset + 1):
+            globals.update(inspect.currentframe(i).f_globals)
+        contracts = {
+            key: {
+                fr.f_code.co_name + ": " + expr: _compile(expr)
+                for expr in value
+            }
+            for key, value in extract_contracts(docstr).items()
+        }
+        contracts['globals'] = globals
+        fr.f_locals['__co_contracts'] = contracts
+
+    contracts = fr.f_locals['__co_contracts']
+    globals = contracts['globals']
+    lg = locals.copy()
+    lg.update(globals)
+    for expr, p in contracts.get('pre', {}).items():
+        try:
+            assert eval(p, globals, locals)
+        except Exception as e:
+            msg = expr + "\n" + pprint.pformat(lg)
+            if not isinstance(e, AssertionError):
+                msg += "\n" + repr(e)
+            raise PreConditionFailed(msg)
+    inv = {}
+    for expr, p in contracts.get('invariant', {}).items():
+        inv[expr] = eval(p, globals, {})
+    __inv_stack.append(inv)
+
+
+def check_post_conditions(ret_val, locals=None, frame_offset=1):
+    fr = inspect.currentframe(frame_offset)
+    if locals is None:
+        locals = fr.f_locals
+    contracts = fr.f_locals['__co_contracts']
+    locals = locals.copy()
+    locals['RETURN'] = ret_val
+    globals = contracts['globals']
+    lg = locals.copy()
+    lg.update(globals)
+    for expr, p in contracts.get('post', {}).items():
+        try:
+            assert eval(p, globals, locals)
+        except Exception as e:
+            msg = expr + "\n" + pprint.pformat(lg)
+            if not isinstance(e, AssertionError):
+                msg += "\n" + repr(e)
+            raise PostConditionFailed(msg)
+    inv = __inv_stack.pop()
+    newguys = contracts.get('invariant', {})
+    for expr in inv.keys():
+        newer = newguys.get(expr, 'None')
+        try:
+            assert inv[expr] == eval(newer, globals, {})
+        except Exception as e:
+            msg = expr + "\n" + pprint.pformat(lg)
+            if not isinstance(e, AssertionError):
+                msg += "\n" + repr(e)
+            raise InvariantChanged(msg)
+
+
+def enforce_contract(func):
+    """
+    This is a decorator for functions that enforce contractual agreements.
+    Functions define a contract with the code that calls them by creating
+    pre- and post-conditions and invariants. The pre-conditions are things the
+    function requires of the calling code, and post-conditions are promises of
+    what the function will deliver. Invariants are promises to avoid causing
+    side effects. Contracts go in docstrings and are specified in YAML.
+
+    pre:
+      - isinstance(a, int)
+      - isinstance(b, float)
+      - isinstance(c, complex)
+      - isinstance(x, dict)
+      - isinstance(y, list)
+      - isinstance(z, tuple)
+      - (a ** 2 + b ** 2 + (c ** 2).real) < 2500
+      - len(y) > 3
+      - all([isinstance(y, str) for z in y])
+    post:
+      - (RETURN ** 2 + a ** 2) > 16
+    invariant:
+      # things that should not be changed by this function
+      - len(state_capitals)
+
+    If you write functions with contracts and you want to switch them off for
+    performance reasons, run Python with the "-O" option, setting the __debug__
+    variable to False.
+    """
+    if not __debug__:
+        return func
+
+    a = inspect.getargspec(func)
+    localnames = a.args
+    kwdefaults = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+
+    @wraps(func)
+    def inner(*args, **kw):
+        locals = kwdefaults
+        locals.update(dict(zip(localnames, args)))
+        locals.update(kw)
+        check_pre_conditions(locals, func.__doc__, 2)
+        return_val = func(*args, **kw)
+        check_post_conditions(return_val, locals, 2)
+        return return_val
+    return inner
+
+
+
+
+
 def extract_contracts(docstr):
     lines = [L.rstrip() for L in docstr.split('\n')]
     headers = set(['pre', 'post', 'invariant'])
