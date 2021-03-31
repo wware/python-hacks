@@ -63,17 +63,9 @@ if opts.force:
 #################################################
 
 
-def helper_1(orig_fn, *args, **kw):
-    a = inspect.getargspec(orig_fn)
-    _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
-    _locals.update(dict(zip(a.args, args)))
-    _locals.update(kw)
-    lg = globals().copy()
-    lg.update(_locals)
-    return _locals, lg
-
-
-def helper_2(orig_fn, *args, **kw):
+def helper(orig_fn, *args, **kw):
+    while hasattr(orig_fn, '_previous'):
+        orig_fn = orig_fn._previous
     a = inspect.getargspec(orig_fn)
     _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
     _locals.update(dict(zip(a.args, args)))
@@ -89,12 +81,12 @@ def pre(expr):
 
         @wraps(fn)
         def inner(*args, **kw):
-            orig_fn = inner
-            print orig_fn
-            while hasattr(orig_fn, '_previous'):
-                orig_fn = orig_fn._previous
-            _locals, lg = helper_1(orig_fn, *args, **kw)
+            lg = None
             try:
+                orig_fn = inner
+                while hasattr(orig_fn, '_previous'):
+                    orig_fn = orig_fn._previous
+                _locals, lg = helper(orig_fn, *args, **kw)
                 assert eval(code, globals(), _locals)
             except Exception as e:
                 msg = expr + "\n" + pprint.pformat(lg)
@@ -108,63 +100,17 @@ def pre(expr):
     return decorator
 
 
-def pre(expr):
-    def decorator(fn):
-        code = compile(expr, '<string>', 'eval')
-        _globals = globals().copy()
-
-        @wraps(fn)
-        def inner(*args, **kw):
-            orig_fn = inner
-            while hasattr(orig_fn, '_previous'):
-                orig_fn = orig_fn._previous
-            retval = fn(*args, **kw)
-            kw['RETURN'] = retval
-            _locals, lg = helper_2(orig_fn, *args, **kw)
-            try:
-                assert eval(code, _globals, _locals)
-            except Exception as e:
-                msg = expr + "\n" + pprint.pformat(lg)
-                if not isinstance(e, AssertionError):
-                    msg += "\n" + repr(e)
-                raise AssertionError(msg)
-            return retval
-
-        inner._previous = fn
-        return inner
-    return decorator
-
-
-
-
-
-
-
 def post(expr):
     def decorator(fn):
         code = compile(expr, '<string>', 'eval')
         _globals = globals().copy()
-        a = inspect.getargspec(fn)
-        localnames = a.args
-        kwdefaults = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
 
         @wraps(fn)
         def inner(*args, **kw):
-            orig_fn = inner
-            while hasattr(orig_fn, '_previous'):
-                orig_fn = orig_fn._previous
-
-            a = inspect.getargspec(orig_fn)
-            _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
-            _locals.update(dict(zip(a.args, args)))
-            _locals.update(kw)
-            _locals = kwdefaults
-            _locals.update(dict(zip(localnames, args)))
-            _locals.update(kw)
-            _locals['RETURN'] = retval = fn(*args, **kw)
-            lg = _locals.copy()
-            lg.update(_globals)
+            lg = None
             try:
+                kw['RETURN'] = retval = fn(*args, **kw)
+                _locals, lg = helper(inner, *args, **kw)
                 assert eval(code, _globals, _locals)
             except Exception as e:
                 msg = expr + "\n" + pprint.pformat(lg)
@@ -172,9 +118,48 @@ def post(expr):
                     msg += "\n" + repr(e)
                 raise AssertionError(msg)
             return retval
+
         inner._previous = fn
         return inner
     return decorator
+
+
+
+
+
+
+
+# def post(expr):
+#     def decorator(fn):
+#         code = compile(expr, '<string>', 'eval')
+#         _globals = globals().copy()
+#         a = inspect.getargspec(fn)
+#         localnames = a.args
+#         kwdefaults = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+#
+#         @wraps(fn)
+#         def inner(*args, **kw):
+#             a = inspect.getargspec(i)
+#             _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+#             _locals.update(dict(zip(a.args, args)))
+#             _locals.update(kw)
+#             _locals = kwdefaults
+#             _locals.update(dict(zip(localnames, args)))
+#             _locals.update(kw)
+#             _locals['RETURN'] = retval = fn(*args, **kw)
+#             lg = _locals.copy()
+#             lg.update(_globals)
+#             try:
+#                 assert eval(code, _globals, _locals)
+#             except Exception as e:
+#                 msg = expr + "\n" + pprint.pformat(lg)
+#                 if not isinstance(e, AssertionError):
+#                     msg += "\n" + repr(e)
+#                 raise AssertionError(msg)
+#             return retval
+#         inner._previous = fn
+#         return inner
+#     return decorator
 
 
 @pre("x * x + y * y < 1.000000001")
