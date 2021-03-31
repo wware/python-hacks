@@ -1,21 +1,21 @@
-"""
-Take yet another stab at DbC for Python, addressing the following issues.
-(1) Preconditions should not apply to each argument separately.
-(2) Postconditions should be able to look at return value and also
-    args and kwargs.
-(3) Don't forget class invariants.
-"""
-
 import argparse
 import logging
-from wwc import ContractClass, ContractViolation
+import inspect
+import pprint
 from contextlib import contextmanager
+from functools import wraps
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     '-d', '--debug',
     action='store_true',
     help='turn on debug-level logging',
+)
+parser.add_argument(
+    '-f', '--force',
+    action='store_true',
+    help='force failures, do not forgive them',
 )
 opts = parser.parse_args()
 if opts.debug:
@@ -43,137 +43,154 @@ def expect_failure():
     try:
         yield
         raise Exception("there was supposed to be a failure here")
-    except ContractViolation as cv:
+    except:
         if logging.getLogger().isEnabledFor(logging.DEBUG):
-            # logging.error(cv)
             logging.exception("Expected failure - this is OK")
 
 
-################################################
+@contextmanager
+def expect_failure_nope():
+    try:
+        yield
+    finally:
+        pass
 
 
-class FooContract(ContractClass):
-    def invariant(self, target):
-        return target.z == 'Zyxxy'
-
-    def pre_foo(self, x, y):
-        return x * x + y * y < 1.000000001
-
-    def post_foo(self, retval, x, y):
-        return isinstance(retval, str)
-
-
-@FooContract.apply
-class FooClass(object):
-    def __init__(self):
-        self.z = 'Zyxxy'
-
-    def foo(self, x, y):
-        if _bad_return_value:
-            return 19
-        else:
-            return 'some return value'
-
-
-f = FooClass()
-f.foo(0.3, 0.5)
-
-with expect_failure():
-    f.foo(12, 14)
-
-with expect_failure():
-    with misbehave():
-        f.foo(0.3, 0.5)
-
-
-################################################
-
-
-class QuuxContract(ContractClass):
-    def pre_quux(self, x, y):
-        return x * x + y * y < 1.000000001
-
-    def post_quux(self, retval, x, y):
-        return isinstance(retval, str)
-
-
-@QuuxContract.apply
-def quux(x, y):
-    if _bad_return_value:
-        return 19
-    else:
-        return 'some return value'
-
-
-quux(1, 0)
-
-with expect_failure():
-    quux(1, 2)
-
-
-with expect_failure():
-    with misbehave():
-        quux(0.3, 0.5)
-
-print('OK')
-
+if opts.force:
+    expect_failure = expect_failure_nope
 
 
 #################################################
 
-from functools import wraps
+
+def helper_1(orig_fn, *args, **kw):
+    a = inspect.getargspec(orig_fn)
+    _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+    _locals.update(dict(zip(a.args, args)))
+    _locals.update(kw)
+    lg = globals().copy()
+    lg.update(_locals)
+    return _locals, lg
+
+
+def helper_2(orig_fn, *args, **kw):
+    a = inspect.getargspec(orig_fn)
+    _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+    _locals.update(dict(zip(a.args, args)))
+    _locals.update(kw)
+    lg = globals().copy()
+    lg.update(_locals)
+    return _locals, lg
 
 
 def pre(expr):
     def decorator(fn):
-        fc = fn.func_code
-        argnames = fc.co_varnames[:fc.co_argcount]
+        code = compile(expr, '<string>', 'eval')
+
         @wraps(fn)
         def inner(*args, **kw):
-            vars = dict(zip(argnames, args))
-            vars.update(kw)
-            assert eval(expr, vars.copy()), "\nPrecondition failed: {0}\n{1}".format(
-                expr,
-                ", ".join(["{0} = {1}".format(k, v) for k, v in vars.items()])
-            )
+            orig_fn = inner
+            print orig_fn
+            while hasattr(orig_fn, '_previous'):
+                orig_fn = orig_fn._previous
+            _locals, lg = helper_1(orig_fn, *args, **kw)
+            try:
+                assert eval(code, globals(), _locals)
+            except Exception as e:
+                msg = expr + "\n" + pprint.pformat(lg)
+                if not isinstance(e, AssertionError):
+                    msg += "\n" + repr(e)
+                raise AssertionError(msg)
             return fn(*args, **kw)
+
+        inner._previous = fn
         return inner
     return decorator
 
 
-def post(expr):
+def pre(expr):
     def decorator(fn):
-        fc = fn.func_code
-        argnames = fc.co_varnames[:fc.co_argcount]
+        code = compile(expr, '<string>', 'eval')
+        _globals = globals().copy()
+
         @wraps(fn)
         def inner(*args, **kw):
-            vars = dict(zip(argnames, args))
-            vars.update(kw)
-            vars['retval'] = retval = fn(*args, **kw)
-            assert eval(expr, vars.copy()), "\nPostcondition failed: {0}\n{1}".format(
-                expr,
-                ", ".join(["{0} = {1}".format(k, v) for k, v in vars.items()])
-            )
+            orig_fn = inner
+            while hasattr(orig_fn, '_previous'):
+                orig_fn = orig_fn._previous
+            retval = fn(*args, **kw)
+            kw['RETURN'] = retval
+            _locals, lg = helper_2(orig_fn, *args, **kw)
+            try:
+                assert eval(code, _globals, _locals)
+            except Exception as e:
+                msg = expr + "\n" + pprint.pformat(lg)
+                if not isinstance(e, AssertionError):
+                    msg += "\n" + repr(e)
+                raise AssertionError(msg)
             return retval
+
+        inner._previous = fn
+        return inner
+    return decorator
+
+
+
+
+
+
+
+def post(expr):
+    def decorator(fn):
+        code = compile(expr, '<string>', 'eval')
+        _globals = globals().copy()
+        a = inspect.getargspec(fn)
+        localnames = a.args
+        kwdefaults = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+
+        @wraps(fn)
+        def inner(*args, **kw):
+            orig_fn = inner
+            while hasattr(orig_fn, '_previous'):
+                orig_fn = orig_fn._previous
+
+            a = inspect.getargspec(orig_fn)
+            _locals = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
+            _locals.update(dict(zip(a.args, args)))
+            _locals.update(kw)
+            _locals = kwdefaults
+            _locals.update(dict(zip(localnames, args)))
+            _locals.update(kw)
+            _locals['RETURN'] = retval = fn(*args, **kw)
+            lg = _locals.copy()
+            lg.update(_globals)
+            try:
+                assert eval(code, _globals, _locals)
+            except Exception as e:
+                msg = expr + "\n" + pprint.pformat(lg)
+                if not isinstance(e, AssertionError):
+                    msg += "\n" + repr(e)
+                raise AssertionError(msg)
+            return retval
+        inner._previous = fn
         return inner
     return decorator
 
 
 @pre("x * x + y * y < 1.000000001")
-@post("isinstance(retval, str)")
+@post("isinstance(RETURN, str)")
 def quux(x, y):
     if _bad_return_value:
         return 19
     else:
-        return 'some return value'
+        return 'OK'
 
 
-quux(1, 0)
+print quux(1, 0)
 
 with expect_failure():
-    quux(1, 2)
-
+    print quux(1, 2)
 
 with expect_failure():
     with misbehave():
-        quux(0.3, 0.5)
+        print quux(0.3, 0.5)
