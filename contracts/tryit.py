@@ -1,6 +1,8 @@
 import inspect
 import os
 import re
+import pprint
+import unittest
 import yaml
 from functools import wraps
 
@@ -55,6 +57,35 @@ variable in a post-condition and then use the decorator, you'll get an
 error.
 """
 
+"""
+This is stuff for functions that enforce contractual agreements.
+Functions define a contract with the code that calls them by creating
+pre- and post-conditions and invariants. The pre-conditions are things the
+function requires of the calling code, and post-conditions are promises of
+what the function will deliver. Invariants are promises to avoid causing
+side effects. Contracts go in docstrings and are specified in YAML.
+
+pre:
+  - isinstance(a, int)
+  - isinstance(b, float)
+  - isinstance(c, complex)
+  - isinstance(x, dict)
+  - isinstance(y, list)
+  - isinstance(z, tuple)
+  - (a ** 2 + b ** 2 + (c ** 2).real) < 2500
+  - len(y) > 3
+  - all([isinstance(y, str) for z in y])
+post:
+  - (RETURN ** 2 + a ** 2) > 16
+invariant:
+  # things that should not be changed by this function
+  - len(state_capitals)
+
+If you write functions with contracts and you want to switch them off for
+performance reasons, run Python with the "-O" option, setting the __debug__
+variable to False.
+"""
+
 
 def env_var(x):
     return os.environ.get(x, '') == '1'
@@ -76,142 +107,97 @@ class InvariantChanged(ContractViolation):
     pass
 
 
-__inv_stack = []
+__contracts = {}
 
 
-def check_pre_conditions(locals=None, docstr=None, frame_offset=1):
+def _set_up_conditions(docstr):
     def _compile(expr):
         try:
             return compile(expr, "<string>", "eval")
         except Exception as e:
             raise e.__class__(expr)
 
-    """
-    When using decorator:
-      - locals are passed in, and represent arguments, WORKS OK
-      - docstring is passed in, WORKS OK
-      - function name seems WRONG -- wraps(func) is not working right???
-      - inspect.currentframe(xxx) is pulling from the ... oh yeah ... fix this
-      - I want the frame in which the decorated function is defined so PASS THAT IN
-         - can I derive locals and docstr from that frame??? yes I can
-         - if I DO NOT get said frame, locals and docstr come from the frame
-           that called me
-    """
+    def extract_contracts():
+        lines = [L.rstrip() for L in docstr.split('\n')]
+        headers = {'pre', 'post', 'invariant'}
+        _contracts = {}
+        while headers:
+            h = headers.pop()
+            yaml_candidate = [i for (i, L) in enumerate(lines)
+                              if re.search(h + r":$", L.rstrip())]
+            if yaml_candidate:
+                yaml_lines = lines[yaml_candidate[0]:]
+                while len(yaml_lines) > 1:
+                    try:
+                        _contracts.update(yaml.load(
+                            "\n".join(yaml_lines),
+                            Loader=yaml.SafeLoader
+                        ))
+                        headers = headers.difference(_contracts.keys())
+                        break
+                    except:
+                        pass
+                    yaml_lines = yaml_lines[:-1]
+        return _contracts
 
-    fr = inspect.currentframe(frame_offset)
-    if not fr.f_locals.has_key('__co_contracts'):
-        if locals is None:
-            locals = fr.f_locals
-        if docstr is None:
-            docstr = fr.f_globals[fr.f_code.co_name].__doc__
-        globals = {}
-        for i in range(frame_offset + 1):
-            globals.update(inspect.currentframe(i).f_globals)
+    frame = inspect.currentframe(2)
+    locals = frame.f_locals
+    globals = frame.f_globals
+    co = frame.f_code
+    func_name = co.co_name
+    if not __contracts.has_key(id(frame)):
         contracts = {
             key: {
-                fr.f_code.co_name + ": " + expr: _compile(expr)
+                (func_name, expr): _compile(expr)
                 for expr in value
             }
-            for key, value in extract_contracts(docstr).items()
+            for key, value in extract_contracts().items()
         }
-        contracts['globals'] = globals
-        fr.f_locals['__co_contracts'] = contracts
+        contracts["invariant_values"] = {}
+        contracts["locals"] = locals
+        contracts["test_invariant"] = compile(
+            "__oldvalue == __newvalue", "<string>", "eval"
+        )
+        __contracts[id(frame)] = contracts
+    return locals, globals, func_name, frame
 
-    contracts = fr.f_locals['__co_contracts']
-    globals = contracts['globals']
-    lg = locals.copy()
-    lg.update(globals)
+
+def _check_condition(expr, p, locals, exc):
+    try:
+        assert eval(p, globals(), locals)
+    except Exception as e:
+        msg = str(expr) + "\n" + pprint.pformat(locals)
+        if not isinstance(e, AssertionError):
+            msg += "\n" + repr(e)
+        raise exc(msg)
+
+
+def check_pre_conditions(docstr):
+    locals, globals, name, frame = _set_up_conditions(docstr)
+    contracts = __contracts[id(frame)]
     for expr, p in contracts.get('pre', {}).items():
-        try:
-            assert eval(p, globals, locals)
-        except Exception as e:
-            msg = expr + "\n" + pprint.pformat(lg)
-            if not isinstance(e, AssertionError):
-                msg += "\n" + repr(e)
-            raise PreConditionFailed(msg)
-    inv = {}
-    for expr, p in contracts.get('invariant', {}).items():
-        inv[expr] = eval(p, globals, {})
-    __inv_stack.append(inv)
+        _check_condition(expr, p, locals, PreConditionFailed)
+    for (func, expr), p in contracts.get('invariant', {}).items():
+        contracts["invariant_values"][(func, expr)] = eval(p, globals, {})
 
 
-def check_post_conditions(ret_val, locals=None, frame_offset=1):
-    fr = inspect.currentframe(frame_offset)
-    if locals is None:
-        locals = fr.f_locals
-    contracts = fr.f_locals['__co_contracts']
-    locals = locals.copy()
+def check_post_conditions(ret_val, docstr):
+    locals, globals, name, frame = _set_up_conditions(docstr)
     locals['RETURN'] = ret_val
-    globals = contracts['globals']
-    lg = locals.copy()
-    lg.update(globals)
+    contracts = __contracts[id(frame)]
     for expr, p in contracts.get('post', {}).items():
-        try:
-            assert eval(p, globals, locals)
-        except Exception as e:
-            msg = expr + "\n" + pprint.pformat(lg)
-            if not isinstance(e, AssertionError):
-                msg += "\n" + repr(e)
-            raise PostConditionFailed(msg)
-    inv = __inv_stack.pop()
-    newguys = contracts.get('invariant', {})
-    for expr in inv.keys():
-        newer = newguys.get(expr, 'None')
-        try:
-            assert inv[expr] == eval(newer, globals, {})
-        except Exception as e:
-            msg = expr + "\n" + pprint.pformat(lg)
-            if not isinstance(e, AssertionError):
-                msg += "\n" + repr(e)
-            raise InvariantChanged(msg)
-
-
-def enforce_contract(func):
-    """
-    This is a decorator for functions that enforce contractual agreements.
-    Functions define a contract with the code that calls them by creating
-    pre- and post-conditions and invariants. The pre-conditions are things the
-    function requires of the calling code, and post-conditions are promises of
-    what the function will deliver. Invariants are promises to avoid causing
-    side effects. Contracts go in docstrings and are specified in YAML.
-
-    pre:
-      - isinstance(a, int)
-      - isinstance(b, float)
-      - isinstance(c, complex)
-      - isinstance(x, dict)
-      - isinstance(y, list)
-      - isinstance(z, tuple)
-      - (a ** 2 + b ** 2 + (c ** 2).real) < 2500
-      - len(y) > 3
-      - all([isinstance(y, str) for z in y])
-    post:
-      - (RETURN ** 2 + a ** 2) > 16
-    invariant:
-      # things that should not be changed by this function
-      - len(state_capitals)
-
-    If you write functions with contracts and you want to switch them off for
-    performance reasons, run Python with the "-O" option, setting the __debug__
-    variable to False.
-    """
-    if not __debug__:
-        return func
-
-    a = inspect.getargspec(func)
-    localnames = a.args
-    kwdefaults = dict(zip(a.args[-len(a.defaults):], a.defaults)) if a.defaults else {}
-
-    @wraps(func)
-    def inner(*args, **kw):
-        locals = kwdefaults
-        locals.update(dict(zip(localnames, args)))
-        locals.update(kw)
-        check_pre_conditions(locals, func.__doc__, 2)
-        return_val = func(*args, **kw)
-        check_post_conditions(return_val, locals, 2)
-        return return_val
-    return inner
+        _check_condition(expr, p, locals, PostConditionFailed)
+    oldguys = contracts["invariant_values"]
+    test_invariant = contracts["test_invariant"]
+    for (func, expr), oldvalue in oldguys.items():
+        newvalue = eval(expr, globals, {})
+        locals.update({
+            "__oldvalue": oldvalue,
+            "__newvalue": newvalue
+        })
+        _check_condition((func, expr), test_invariant,
+                         locals, InvariantChanged)
+    return ret_val
 
 
 ################################
@@ -220,7 +206,6 @@ def enforce_contract(func):
 IMPLACABLE = 'this value does not change and is therefore invariant'
 
 
-@enforce_contract
 def simplest(x, y):
     """
     This is a nice simple case. Notice that the post conditions do not reference
@@ -237,14 +222,14 @@ def simplest(x, y):
     invariant:
         - IMPLACABLE
     """
-    return x + y
+    check_pre_conditions(simplest.__doc__)
+    return check_post_conditions(x + y, simplest.__doc__)
 
 
-
-DECORATOR = False
 BAD1 = BAD2 = BAD3 = False
 
 state_capitals = ['Boston', 'Hartford']
+
 
 def example_function(a, b, c, x, y, z, plugh=None):
     """
@@ -277,19 +262,13 @@ def example_function(a, b, c, x, y, z, plugh=None):
     """
     # use x, y, and z, for nothing, to avoid a pycharm warning
     x.update({'silly': y + list(z), 'extra': plugh})
-    if not DECORATOR:
-        check_pre_conditions()
+    check_pre_conditions(example_function.__doc__)
     return_val = int(11 + 0 * (a + b + c).real)
     if BAD1:
         return_val = 2   # violate post condition
     if BAD2:
         state_capitals.append('Bangor')    # violate invariant
-    if not DECORATOR:
-        check_post_conditions(return_val)
-    return return_val
-
-
-example_decorated = enforce_contract(example_function)
+    return check_post_conditions(return_val, example_function.__doc__)
 
 
 def example_2(x):
@@ -301,11 +280,9 @@ def example_2(x):
     post:
         - x + y < 12
     """
-    check_pre_conditions()
+    check_pre_conditions(example_2.__doc__)
     y = x + 3
-    z = x + y
-    check_post_conditions(z)
-    return z
+    return check_post_conditions(x + y, example_2.__doc__)
 
 
 def example_3(x, y=1, z=2, **kw):
@@ -318,28 +295,36 @@ def example_3(x, y=1, z=2, **kw):
         - x + y + z < 15
         - RETURN < 15
     """
-    check_pre_conditions()
-    w = x * y * z
-    check_post_conditions(w)
-    return w
+    check_pre_conditions(example_3.__doc__)
+    return check_post_conditions(x * y * z, example_3.__doc__)
+
+
+class MethodExample(object):
+    def mymethod(self, x, y):
+        """
+        pre:
+            - isinstance(x, int)
+            - -5 <= x <= 5
+            - isinstance(y, int)
+            - -5 <= y <= 5
+        post:
+            - isinstance(RETURN, int)
+            - -10 <= RETURN <= 10
+        """
+        check_pre_conditions(simplest.__doc__)
+        return check_post_conditions(x + y, simplest.__doc__)
 
 
 ###########################################################################
 
 
-import unittest
+def run_example():
+    a = 600 if BAD3 else 3
+    return example_function(a, 11.0, 3.0 + 4.0j,
+                            {}, ['1', 2, 3, 4], ())
 
 
 class SimpleTestCase(unittest.TestCase):
-    def run_example(self):
-        a = 600 if BAD3 else 3
-        return example_function(a, 11.0, 3.0 + 4.0j,
-                                {}, ['1', 2, 3, 4], ())
-
-    def run_decorated(self):
-        a = 600 if BAD3 else 3
-        return example_decorated(a, 11.0, 3.0 + 4.0j,
-                                 {}, ['1', 2, 3, 4], ())
 
     def test_simple_clean(self):
         self.assertEqual(simplest(3, 4), 7)
@@ -353,54 +338,27 @@ class SimpleTestCase(unittest.TestCase):
                           lambda: simplest(2, 11))
 
     def test_1_clean(self):
-        global BAD1, BAD2, BAD3, DECORATOR
-        BAD1 = BAD2 = BAD3 = DECORATOR = False
-        self.assertEqual(self.run_example(), 11)
+        global BAD1, BAD2, BAD3
+        BAD1 = BAD2 = BAD3 = False
+        self.assertEqual(run_example(), 11)
 
     def test_1_bad1(self):
-        global BAD1, BAD2, BAD3, DECORATOR
-        BAD1 = True
-        BAD2 = BAD3 = DECORATOR = False
-        self.assertRaises(PostConditionFailed, self.run_example)
-
-    def test_1_bad2(self):
-        global BAD1, BAD2, BAD3, DECORATOR
-        BAD2 = True
-        BAD1 = BAD3 = DECORATOR = False
-        self.assertRaises(InvariantChanged, self.run_example)
-
-    def test_1_bad3(self):
-        global BAD1, BAD2, BAD3, DECORATOR
-        BAD3 = True
-        BAD1 = BAD2 = DECORATOR = False
-        self.assertRaises(PreConditionFailed, self.run_example)
-
-    def test_1d_clean(self):
-        global BAD1, BAD2, BAD3, DECORATOR
-        BAD1 = BAD2 = BAD3 = False
-        DECORATOR = True
-        self.assertEqual(self.run_decorated(), 11)
-
-    def test_1d_bad1(self):
-        global BAD1, BAD2, BAD3, DECORATOR
+        global BAD1, BAD2, BAD3
         BAD1 = True
         BAD2 = BAD3 = False
-        DECORATOR = True
-        self.assertRaises(PostConditionFailed, self.run_decorated)
+        self.assertRaises(PostConditionFailed, run_example)
 
-    def test_1d_bad2(self):
-        global BAD1, BAD2, BAD3, DECORATOR
+    def test_1_bad2(self):
+        global BAD1, BAD2, BAD3
         BAD2 = True
         BAD1 = BAD3 = False
-        DECORATOR = True
-        self.assertRaises(InvariantChanged, self.run_decorated)
+        self.assertRaises(InvariantChanged, run_example)
 
-    def test_1d_bad3(self):
-        global BAD1, BAD2, BAD3, DECORATOR
+    def test_1_bad3(self):
+        global BAD1, BAD2, BAD3
         BAD3 = True
         BAD1 = BAD2 = False
-        DECORATOR = True
-        self.assertRaises(PreConditionFailed, self.run_decorated)
+        self.assertRaises(PreConditionFailed, run_example)
 
     def test_2_good(self):
         self.assertEqual(example_2(1), 5)
@@ -418,6 +376,21 @@ class SimpleTestCase(unittest.TestCase):
         self.assertRaises(PreConditionFailed,
                           lambda: example_3(1, 1, 2,
                                             a='hi', b='bye', c='ouch'))
+
+    def test_method_clean(self):
+        mm = MethodExample()
+        self.assertEqual(mm.mymethod(3, 4), 7)
+
+    def test_method_bad1(self):
+        mm = MethodExample()
+        self.assertRaises(PreConditionFailed,
+                          lambda: mm.mymethod(3.14159, 'abc'))
+
+    def test_method_bad2(self):
+        mm = MethodExample()
+        self.assertRaises(PreConditionFailed,
+                          lambda: mm.mymethod(2, 11))
+
 
 if __name__ == "__main__":
     unittest.main()
