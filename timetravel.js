@@ -23,12 +23,8 @@ function prepare_file(url) {
         prefix = before;
     }
     files.push(url);
-    console.log(files);
-    console.log(my_tables);
     $.get(prefix + url).done(function(data) {
-        console.log(data);
         let table = $('<table>');
-        console.log(table);
         let linenum = 1;
         $.map(data.split("\n"), function (line) {
             let row = $('<tr id="L' + linenum + '">');
@@ -44,8 +40,8 @@ function prepare_file(url) {
             table.append(row);
             linenum += 1;
         });
-        console.log(table);
         my_tables[url] = table;
+	display_step();
     });
 }
 
@@ -53,7 +49,7 @@ function display_file(url, vars, event, arg) {
     vars = JSON.parse(vars);
     if (url != most_recent_url) {
         most_recent_url = url;
-        $('div#filename').html('<h3>' + url + '</h3>');
+        $('#filename').html('<h3>' + url + '</h3>');
         const target = $('div#target');
         target.empty();
         target.append(my_tables[url]);
@@ -72,9 +68,7 @@ function display_file(url, vars, event, arg) {
     $("#returnvalue").empty();
     if (event == 'return') {
         let x = 'Return <tt>' + arg + '</tt>';
-        console.log($("#returnvalue"));
-        console.log(x);
-        $("div#returnvalue").html(x);
+        $("#returnvalue").html(x);
     }
 }
 function unmark_line(selector) {
@@ -88,6 +82,11 @@ function mark_line(selector) {
     $(selector).css("background-color", "FF0");
 }
 
+function display_step() {
+    let step = steps[which_step];
+    display_file(files[parseInt(step.F)], step.V, step.E, step.A);
+    mark_line("#L" + step.L);
+}
 function far_left_click() {
     left_click_inner(100);
 }
@@ -107,9 +106,7 @@ function left_click_inner(n) {
         }
         n--;
     }
-    let step2 = steps[which_step];
-    display_file(files[parseInt(step2.F)], step2.V, step2.E, step2.A);
-    mark_line("#L" + step2.L);
+    display_step();
 }
 function right_click_inner(n) {
     let step1 = steps[which_step];
@@ -122,9 +119,7 @@ function right_click_inner(n) {
         n--;
     }
     unmark_line("#L" + step1.L);
-    let step2 = steps[which_step];
-    display_file(files[parseInt(step2.F)], step2.V, step2.E, step2.A);
-    mark_line("#L" + step2.L);
+    display_step();
 }
 function right_click() {
     right_click_inner(1);
