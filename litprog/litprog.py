@@ -10,6 +10,32 @@ from jinja2 import Template, Environment, BaseLoader
 DEBUG = False
 
 
+class Finder(object):
+    def __init__(self):
+        self.continuation = None
+        self.things = []
+        self.prev_preamble = None
+
+    def start(self, line):
+        return None, None    # preamble, stuff to save
+
+    def middle(self, line):
+        return None, None    # preamble, stuff to save
+
+    def end(self, line):
+        return None, None    # preamble, stuff to save
+
+    def process_line(self, line):
+        if self.continuation is None:
+            assert self.prev_preamble is None
+            preamble, stuff = self.start(line)
+            if stuff is not None:
+                self.prev_preamble = preamble
+                self.continuation = stuff
+        do other stuff....
+
+
+
 def render(target):
     f = inspect.currentframe(1)
     fi = os.path.realpath(f.f_globals['__file__'])
