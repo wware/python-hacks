@@ -8,7 +8,7 @@ import argparse
 import os
 import litprog
 
-first_paragraph = """
+"""
 ## Diverging from Knuth
 
 Knuth's writings on Literate Programming describe a source document of a
@@ -64,7 +64,7 @@ def parse_cmd_line_args():
     return args, args.extras
 
 
-second_paragraph = """
+"""
 ## *Second* paragraph
 
 Think about how this stuff could dovetail with the MTSL project.
@@ -79,11 +79,12 @@ indentation
 {{ "separate" | cre }}
 """
 
-my_doc = [
-    "# This is my markdown document",
-    first_paragraph,
-    second_paragraph
-]
+my_doc = """
+# This is my markdown document
+
+{{ "" | sre }}
+{{ "" | sre }}
+"""
 
 
 # Let's put in a comment that we can refer to using a regular

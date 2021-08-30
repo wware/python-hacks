@@ -10,39 +10,64 @@ from jinja2 import Template, Environment, BaseLoader
 DEBUG = False
 
 
-class Finder(object):
-    # stages
-    BEGIN, MIDDLE, END = range(3)
+def make_process_comments():
+    comments = []
+    state = [
+        None,    # continuation
+        None     # previous group 1
+    ]
 
-    def __init__(self):
-        self.continuation = None
-        self.things = []
-        self.prev_preamble = None
-
-    def classify(self, line):
-        return None, None, None    # preamble, stuff to save, stage
-
-    def process_line(self, line):
-        preamble, stuff, stage = self.classify(line)
-        if self.continuation is None:
-            assert self.prev_preamble is None
-            if stage == self.BEGIN:
-                self.prev_preamble = preamble
-                self.continuation = stuff
-        elif stage == self.MIDDLE:
-            pass
-        elif stage == self.END:
-            pass
-
-
-class CommentFinder(Finder):
-    def classify(self, line):
-        m = re.match(r"^(\s*#\s*)(.*)", line, flags=re.MULTILINE)
-        if m:
-            # OOPS, BEGIN/MIDDLE/END is the wrong abstraction for this
-            return m.group(1), m.group(2), self.BEGIN
+    def process_line(line):
+        m = re.match(r"^(\s*#)\s(.*)", line, flags=re.MULTILINE)
+        if m is not None:
+            if state[0] is None:
+                # start of comment
+                state[0] = m.group(2)
+                state[1] = m.group(1)
+            else:
+                if state[1] != m.group(1):
+                    # indentation has changed, it's a new comment
+                    comments.append(state[0])   # save the old comment
+                    state[0] = m.group(2)
+                    state[1] = m.group(1)
+                else:
+                    state[0] += '\n' + m.group(2)
         else:
-            return None, None, None    # preamble, stuff to save, stage
+            if state[0] is not None:
+                # end of comment, save it
+                comments.append(state[0])
+                state[0] = state[1] = None
+
+    return process_line, comments
+
+
+def make_process_strings():
+    strings = []
+    state = [
+        None,    # None=waiting_or_getting, 1=start_next_line
+        None     # continuation
+    ]
+
+    def process_line(line):
+        m = re.match(r'^(\'\'\'|""")$', line)
+        if m is not None:
+            if state[0] is None:
+                # the NEXT line is start of string
+                state[0] = 1
+                state[1] = ""
+            else:
+                # end of line
+                strings.append(state[1])
+                state[0] = state[1] = None
+        else:
+            if state[0] == 1:
+                # start of string
+                state[1] = line
+                state[0] = None
+            elif state[1] is not None:
+                state[1] += "\n" + line
+
+    return process_line, strings
 
 
 def render(target):
@@ -51,39 +76,18 @@ def render(target):
     g = f.f_globals
     R = map(lambda x: x.rstrip(),
             open(fi).readlines())
-    comments = []
-    last_start = None
-    continuation = None
+    process_line, comments = make_process_comments()
+    process_line_2, strings = make_process_strings()
     for line in R:
         if DEBUG: print 'LINE', line
-        m = re.match(r"^(\s*)#\s*(.*)", line, flags=re.MULTILINE)
-        if m is None:
-            if DEBUG: print "A", line
-            if continuation is not None:
-                # end of comment, save it in array
-                comments.append(continuation)
-                if DEBUG: pprint.pprint(("A", comments))
-                continuation = last_start = None
-        elif continuation is None:
-            # start of comment
-            last_start = m.group(1)
-            continuation = m.group(2)
-            if DEBUG: print "E", m.groups(), continuation
-        elif last_start == m.group(1):
-            continuation += "\n" + m.group(2)
-            if DEBUG: print "B", m.groups(), continuation
-        else:
-            print "D", m.groups(), continuation
-            # change of indentation, end current comment, start new one
-            comments.append(continuation)
-            last_start = m.group(1)
-            continuation = m.group(2)
+        process_line(line)
+        process_line_2(line)
+
+    assert False, pprint.pformat(strings)
 
     def comment_regex(key):
-        if DEBUG: print 'KEY', key
         r = re.compile(key)
         for c in comments:
-            if DEBUG: print 'C', c
             if r.search(c) is not None:
                 lines = c.split('\n')
                 lines = ['> ' + L for L in lines]
