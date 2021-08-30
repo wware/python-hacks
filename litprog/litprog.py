@@ -11,29 +11,38 @@ DEBUG = False
 
 
 class Finder(object):
+    # stages
+    BEGIN, MIDDLE, END = range(3)
+
     def __init__(self):
         self.continuation = None
         self.things = []
         self.prev_preamble = None
 
-    def start(self, line):
-        return None, None    # preamble, stuff to save
-
-    def middle(self, line):
-        return None, None    # preamble, stuff to save
-
-    def end(self, line):
-        return None, None    # preamble, stuff to save
+    def classify(self, line):
+        return None, None, None    # preamble, stuff to save, stage
 
     def process_line(self, line):
+        preamble, stuff, stage = self.classify(line)
         if self.continuation is None:
             assert self.prev_preamble is None
-            preamble, stuff = self.start(line)
-            if stuff is not None:
+            if stage == self.BEGIN:
                 self.prev_preamble = preamble
                 self.continuation = stuff
-        do other stuff....
+        elif stage == self.MIDDLE:
+            pass
+        elif stage == self.END:
+            pass
 
+
+class CommentFinder(Finder):
+    def classify(self, line):
+        m = re.match(r"^(\s*#\s*)(.*)", line, flags=re.MULTILINE)
+        if m:
+            # OOPS, BEGIN/MIDDLE/END is the wrong abstraction for this
+            return m.group(1), m.group(2), self.BEGIN
+        else:
+            return None, None, None    # preamble, stuff to save, stage
 
 
 def render(target):
