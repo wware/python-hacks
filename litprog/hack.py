@@ -60,7 +60,8 @@ def parse_cmd_line_args():
     parser.add_argument('extras', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.debug:
-        litprog.DEBUG = True
+        import logging
+        litprog.logger.setLevel(logging.DEBUG)
     return args, args.extras
 
 

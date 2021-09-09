@@ -4,10 +4,16 @@ import re
 import os
 import sys
 import pprint
+import logging
 from jinja2 import Template, Environment, BaseLoader
 
 
-DEBUG = False
+_FORMAT = "%(asctime)-15s  %(name)s:%(levelname)s  %(filename)s:%(lineno)d  %(message)s"
+logger = logging.getLogger("litprog")
+h = logging.StreamHandler(sys.stderr)
+h.setFormatter(logging.Formatter(_FORMAT))
+logger.addHandler(h)
+logger.setLevel(logging.INFO)
 
 
 def make_process_comments():
@@ -49,7 +55,7 @@ def make_process_strings():
     ]
 
     def process_line(line):
-        m = re.match(r'^(\'\'\'|""")$', line)
+        m = re.match(r'^(\'\'\'|""")', line)
         if m is not None:
             if state[0] is None:
                 # the NEXT line is start of string
@@ -57,15 +63,15 @@ def make_process_strings():
                 state[1] = ""
             else:
                 # end of line
-                strings.append(state[1])
+                strings.append(state[1].lstrip())
                 state[0] = state[1] = None
         else:
-            if state[0] == 1:
+            if state[1] is not None:
+                state[1] += "\n" + line
+            else:
                 # start of string
                 state[1] = line
                 state[0] = None
-            elif state[1] is not None:
-                state[1] += "\n" + line
 
     return process_line, strings
 
@@ -79,11 +85,11 @@ def render(target):
     process_line, comments = make_process_comments()
     process_line_2, strings = make_process_strings()
     for line in R:
-        if DEBUG: print 'LINE', line
+        logger.debug(line)
         process_line(line)
         process_line_2(line)
 
-    assert False, pprint.pformat(strings)
+    logger.debug(pprint.pformat(strings))
 
     def comment_regex(key):
         r = re.compile(key)
@@ -92,6 +98,13 @@ def render(target):
                 lines = c.split('\n')
                 lines = ['> ' + L for L in lines]
                 return '\n'.join(lines)
+        return ''
+
+    def strings_regex(key):
+        r = re.compile(key)
+        for s in strings:
+            if r.search(s) is not None:
+                return s
         return ''
 
     def pretty_doc(thing):
@@ -103,13 +116,14 @@ def render(target):
     def render_str(s):
         env = Environment(loader=BaseLoader)
         env.filters["cre"] = comment_regex
+        env.filters["sre"] = strings_regex
         tm = env.from_string(s)
         d = {
             thing.__name__: pretty_doc(thing)
             for thing in [v for v in g.values()
                           if callable(v) and hasattr(v, '__name__')]
         }
-        if DEBUG: print 'dct', d
+        logger.debug(d)
         return tm.render(**d)
 
     def render_obj(obj):
