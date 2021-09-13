@@ -15,6 +15,11 @@ AAPL AMZN GOOG ORCL IBM DELL FB SBUX MU AMAT XLNX PYPL
 NMM BGFV CAR SBLK EGLE COF LXU AUOTY OLN
 """.split()]
 
+HOUR = 3600
+DAY = 24 * HOUR
+WEEK = 7 * DAY
+YEAR = 365 * DAY
+
 # TICKERS = [x.strip() for x in """
 # AAPL AMZN GOOG ORCL
 # """.split()]
@@ -24,10 +29,13 @@ if len(sys.argv) > 1:
 else:
     years = 3
 
+TEST_PERIOD = YEAR
+t3 = int(time.time())
+t2 = int(t3 - TEST_PERIOD)
+t1 = int(t2 - years * YEAR)
+assert t1 < t2 < t3, (t1, t2, t3)
 
 _cache = {}
-
-
 
 
 def stock_history(ticker, t1, t2):
@@ -48,6 +56,45 @@ def stock_history(ticker, t1, t2):
                 import logging
                 logging.exception(row)
                 raise
+
+
+def stream_log(g, sel=None):
+    if sel is None:
+        sel = lambda x: x
+    for x in g:
+        x = sel(x)
+        assert isinstance(x, float), x
+        yield math.log(x)
+
+
+def stream_mu_sigma(g, sel=None):
+    ALPHA = 0.03
+    mu = None
+    sigmasq = 0.
+    if sel is None:
+        sel = lambda x: x
+    for x in g:
+        x = sel(x)
+        if mu is None:
+            mu = x
+        else:
+            mu = ALPHA * x + (1. - ALPHA) * mu
+        sigmasq = ALPHA * (x - mu) ** 2 + (1. - ALPHA) * sigmasq
+        yield (x, mu, sigmasq ** 0.5)
+
+
+def second((u, v)):
+    return v
+
+
+for a, b, c in stream_mu_sigma(stream_log(stock_history('AMZN', t1, t2), sel=second)):
+    print((math.exp(a), b, c))
+    if a < b - c:
+        print 'BUY'
+    elif a > b + c:
+        print 'SELL'
+sys.exit(0)
+
 
 
 def get_log_stock_price(ticker, t1, t2):
@@ -133,16 +180,6 @@ class MomentumModel(object):
 # MomentumModel.test()
 
 
-HOUR = 3600
-DAY = 24 * HOUR
-WEEK = 7 * DAY
-YEAR = 365 * DAY
-
-TEST_PERIOD = YEAR
-t3 = int(time.time())
-t2 = int(t3 - TEST_PERIOD)
-t1 = int(t2 - years * YEAR)
-assert t1 < t2 < t3, (t1, t2, t3)
 lst = []
 for ticker in TICKERS:
     m = MomentumModel(ticker, get_log_stock_price(ticker, t1, t2)[1])
