@@ -28,6 +28,28 @@ else:
 _cache = {}
 
 
+
+
+def stock_history(ticker, t1, t2):
+    assert isinstance(ticker, str), ticker
+    assert isinstance(t1, int), t1
+    assert isinstance(t2, int), t2
+    assert t1 < t2
+    url = 'https://query1.finance.yahoo.com/v7/finance/download/{0}?period1={1}&period2={2}&interval=1d&events=history&includeAdjustedClose=true'.format(
+        ticker, t1, t2)
+    cmd = 'curl -o - \'' + url + '\' 2> /dev/null'
+    with os.popen(cmd) as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            try:
+                if row[5] != 'Adj Close':
+                    yield ((row[0], float(row[5])))
+            except:
+                import logging
+                logging.exception(row)
+                raise
+
+
 def get_log_stock_price(ticker, t1, t2):
     assert isinstance(ticker, str), ticker
     assert isinstance(t1, int), t1
