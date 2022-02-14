@@ -1,6 +1,7 @@
 import datetime
 import os
 import warnings
+from collections import namedtuple
 
 import pytest
 
@@ -20,6 +21,9 @@ def test_mult_3_4():
     assert multiply(2, 19) != 12
 
 
+# One of the built-in fixtures is pytest.mark.xfail, which is used to
+# indicate an expected failure that we want to ignore. We can optionally
+# say what kind of failure we expect.
 @pytest.mark.xfail    # comment this line out to try the pdb hack
 def test_known_failure():
     """
@@ -41,7 +45,18 @@ def test_known_failure():
 
 def divide(x, y):
     """
-    We can get in trouble here with a zero denominator.
+    We can get in trouble here with a zero denominator. The examples below
+    are doctest things, and you can include them in your tests by saying
+    "py.test --doctest-module".
+
+    >>> divide(9, 3)
+    3.0
+    >>> divide(1, 7)
+    0.14285714285714285
+    >>> divide(5, 0)
+    Traceback (most recent call last):
+      File "<stdin>", line 1, in <module>
+    ZeroDivisionError: division by zero
     """
     return x / y
 
@@ -60,23 +75,17 @@ def test_recursion_depth():
     """
     Another example of an expected failure.
     """
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(RuntimeError) as exc_info:
         def f():
             f()
         f()
-    assert str(excinfo.value) == 'maximum recursion depth exceeded'
+    assert str(exc_info.value) == 'maximum recursion depth exceeded'
 
 
-# pylint: disable=undefined-variable
 @pytest.mark.xfail(raises=NameError)
 def test_never_defined():
-    """
-    One of the built-in fixtures is pytest.mark.xfail, which is used to
-    indicate an expected failure that we want to ignore. We can optionally
-    say what kind of failure we expect.
-    """
+    # noinspection PyUnresolvedReferences
     never_defined()
-# pylint: enable=undefined-variable
 
 
 def test_warning():
@@ -102,21 +111,22 @@ def test_warning():
 #############################################################
 
 
-def do_stuff_with_file(fileobj):
+def expect_phrase_in_file(fileobj):
     """
     Text processing (even trivial) is a good example to show how fixtures
     can mock things that may be slow or may fail.
     """
-    return 'py.test' in fileobj.read()
+    contents = fileobj.read()
+    assert 'py.test' in contents
 
 
 def test_with_file():
-    assert do_stuff_with_file(open('README.md')) is True
+    expect_phrase_in_file(open('README.md'))
 
 
 def test_with_non_existent_file():
     with pytest.raises(IOError) as excinfo:
-        assert do_stuff_with_file(open('Mahabharata.md')) is True
+        expect_phrase_in_file(open('Mahabharata.md'))
     assert "No such file or directory" in str(excinfo.value)
 
 
@@ -138,7 +148,7 @@ def test_with_mock_open(mock_open):
     """
     Let's use the open-file mock in a test.
     """
-    assert do_stuff_with_file(mock_open("README.md")) is True
+    expect_phrase_in_file(mock_open("README.md"))
 
 
 @pytest.fixture
@@ -157,7 +167,7 @@ def test_with_missing_mock(mock_open_missing):
     Let's use the open-missing-file mock in a test.
     """
     with pytest.raises(IOError) as excinfo:
-        assert do_stuff_with_file(mock_open_missing("Mahabharata.md")) is True
+        expect_phrase_in_file(mock_open_missing("Mahabharata.md")) is True
     assert "No such file or directory" in str(excinfo.value)
 
 
@@ -171,7 +181,7 @@ def some_dumb_resource(request):
 
     The request argument uses one of py.test's built-in fixtures to set up the teardown.
     """
-    print "Set up some dumb resource"   # do some stuff
+    print("Set up some dumb resource")
     """
     If you don't need a teardown, you can skip the rest of this, and remove the
     request argument above.
@@ -181,7 +191,7 @@ def some_dumb_resource(request):
         This finalizer will perform the teardown operation matchine the setup
         operation above.
         """
-        print "Tear down some dumb resource"     # undo some stuff
+        print("Tear down some dumb resource")
     request.addfinalizer(some_dumb_resource_teardown)
 
 
@@ -195,29 +205,31 @@ def test_setup_and_teardown(some_dumb_resource):
 #                                                           #
 #############################################################
 
+# a, b, c are a Pythagorean triplet (possibly bogus)
+# legit is a bool, true if a**2 + b**2 == c**2
+test_case = namedtuple("TestCase", "a b c legit")
+
+
+def valid_pythagorean_triplet(testcase):
+    return (testcase.a ** 2 + testcase.b ** 2) == testcase.c ** 2
+
 
 @pytest.fixture(params=[
-    # tuple with (input, expectedOutput)
-    (3, 4, 5, True),    # legitimate Pythagorean triplets
-    (5, 12, 13, True),
-    (8, 15, 17, True),
-    (7, 24, 25, True),
-    (1, 2, 3, False),    # bogus Pythagorean triplets
-    (6, 7, 10, False),
-    (105, 110, 130, False),
-    (600, 800, 1001, False)
+    test_case(3, 4, 5, True),    # legitimate Pythagorean triplets
+    test_case(5, 12, 13, True),
+    test_case(8, 15, 17, True),
+    test_case(7, 24, 25, True),
+    test_case(1, 2, 3, False),    # bogus Pythagorean triplets
+    test_case(6, 7, 10, False),
+    test_case(105, 110, 130, False),
+    test_case(600, 800, 1001, False)
 ])
 def test_data(request):
     return request.param
 
 
-def valid_pythagorean_triplet(a, b, c):
-    return (a ** 2 + b ** 2) == c ** 2
-
-
 def test_pythagorean(test_data):
-    a, b, c, legit = test_data
-    assert valid_pythagorean_triplet(a, b, c) == legit
+    assert valid_pythagorean_triplet(test_data) == test_data.legit
 
 
 @pytest.mark.parametrize('input, expected, legit', [
