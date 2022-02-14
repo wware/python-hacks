@@ -1,4 +1,8 @@
-# Python Testing Yucks and Giggles
+# Python Software Testing for Great Justice!
+
+We all want to write bug-free code that nobody ever complains about.
+There are various ways to get closer to this goal. One of the most
+effective is software tests.
 
 * http://docs.python-guide.org/en/latest/writing/tests/
 
