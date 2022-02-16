@@ -10,11 +10,33 @@ mathematical functions.
 * Functions are unaffected by external events. The cosine does not depend on
   the weather, or the room temperature, or the exchange rate of any currency.
 
-Another closely related thing is immutable data. When you assign a variable,
-its value should not change as long as the variable remains in scope. Any access
-to the variable, for instance the 3rd element of a list or tuple, or any
-attribute of a class instance, or any value in a dictionary or set, should
-remain invariant as long as the variable is still valid.
+One way to support this functional programming style is to stay as close as
+possible to the principle of immutable data. Once a variable is created and
+given its initial value, it should ideally never be changed as long as the
+variable remains in scope. Then you can more easily reason about what the
+code is doing.
+
+Many languages provide support for keeping data immutable. It is not generally
+enforced but it's made easy, and where a variable is reassigned there is often
+some syntactic convention to make that evident. You'll see this in Clojure and
+I believe Rust.
+
+For non-primitive data types, Python provides tuples, frozen sets, and frozen
+dicts, which prevent reassignment of internals. It's also possible to use a
+namedtuple to provide immutable attributes for a sort of frozen class.
+
+    from collections import namedtuple
+    
+    class Vector(namedtuple("V", "x y z")):
+        def len(self):
+            return self.inner(self) ** .5
+    
+        def inner(self, w):
+            assert isinstance(w, Vector)
+            return self.x*w.x + self.y*w.y + self.z*w.z
+    
+        def scale(self, k):
+            return Vector(k*self.x, k*self.y, k*self.z)
 
 These principles of math-like function on the one hand, and immutable data on
 the other, vastly reduce the possibility of bugs in your code. They also make
@@ -29,10 +51,10 @@ function should not be changed after their first assignment.
     def f(x, y, z):
         u = 1
         v = 2
-        w = 3   # okay so far
+        w = 3              # okay so far
         z = g(u, v, w)     # -- BAD -- because we are changing z, an argument
         print(u + v)       # this is okay, it won't change anything
-        v += 1     # -- BAD -- do not change v here
+        v += 1             # -- BAD -- do not change v here
         return u * v * w
 
 There are other ways variables can be created or initially defined, such as by
@@ -46,6 +68,11 @@ a for loop or an enumerate.
         return whatever
 
 This is okay.
+
+It's preferable to use a map()-like function rather than a loop. Internal to
+the map() function there are certainly variables and assignments, but at least
+you're not doing them yourself, you are relying on some library that has
+presumably got its own test framework maintained elsewhere.
 
 ## Testable internal stuff
 
