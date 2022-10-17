@@ -11,10 +11,7 @@ def is_truthy(str):
     return str.lower() in ("1", "true", "yes")
 
 def literate_assert(template):
-    already_fired = [False]
     def check(cond, **kwargs):
-        if already_fired[0]:
-            return
         dump = (
             cond is MESSAGE_ONLY or
             is_truthy(os.environ.get("SHOW_ASSERTS", ""))
@@ -23,7 +20,6 @@ def literate_assert(template):
             d = inspect.stack()[1][0].f_locals
             d.update(kwargs)
             s = template.format(**d)
-            already_fired[0] = True
             if dump:
                 print(s)
             else:
