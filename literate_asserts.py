@@ -1,18 +1,30 @@
 # Kudos and gratitude to Paul Panzer for the second answer to
 # https://stackoverflow.com/questions/42497625
 import inspect
+import os
 import sys
 
 # when we don't actually want an exception raised
 MESSAGE_ONLY = object()
 
+def is_truthy(str):
+    return str.lower() in ("1", "true", "yes")
+
 def literate_assert(template):
+    already_fired = [False]
     def check(cond, **kwargs):
-        if cond is MESSAGE_ONLY or not cond:
+        if already_fired[0]:
+            return
+        dump = (
+            cond is MESSAGE_ONLY or
+            is_truthy(os.environ.get("SHOW_ASSERTS", ""))
+        )
+        if dump or not cond:
             d = inspect.stack()[1][0].f_locals
             d.update(kwargs)
             s = template.format(**d)
-            if cond is MESSAGE_ONLY:
+            already_fired[0] = True
+            if dump:
                 print(s)
             else:
                 raise AssertionError(s)
