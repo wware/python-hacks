@@ -10,3 +10,6 @@ I have a bunch of things to go here.
   work with Markdown?
 * Markdown in docstrings could be very cool, alas PyCharm doesn't
   know how to deal with that.
+
+Look at pydoc. Can pydoc do Markdown?
+
