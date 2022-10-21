@@ -11,11 +11,10 @@ import (
 )
 
 
-var format = ""
 var lines []string
 
 
-func showLine(n int) {
+func showLine(format string, n int) {
     formatslice := format[:]
     pattern := regexp.MustCompile(`(%-?[0-9]*[NL])`)
     for {
@@ -38,6 +37,7 @@ func showLine(n int) {
     }
 }
 
+
 func main() {
     headp := flag.Bool("head", false, "show lines before and including trigger")
     tailp := flag.Bool("tail", false, "show lines after and including trigger")
@@ -47,7 +47,6 @@ func main() {
     inputp := flag.String("input", "", "input file")
     formatp := flag.String("format", "%L", "format for how lines are displayed")
     flag.Parse()
-    format = *formatp
 
     var err error
     if *inputp != "" {
@@ -96,12 +95,10 @@ func main() {
     }
 
     for i := 0; i < len(lines); i++ {
-        if i == n {
-            showLine(i)
-        } else if (bool(*headp) && i < n) {
-            showLine(i)
-        } else if (bool(*tailp) && i > n) {
-            showLine(i)
+        if (i == n ||
+            (bool(*headp) && i < n) ||
+            (bool(*tailp) && i > n)) {
+            showLine(*formatp, i)
         }
     }
 }
