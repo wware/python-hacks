@@ -1,34 +1,27 @@
 # Debug stuff in out-of-band whatsis
 
+This is a set of debug add-ons that you control by setting an environment
+variable and uploading a python source file to each host. Typical use cases
+will be tracing running Python code, and watching changes to the values of
+particular variables, and you can do these things without changing the source
+code running on the worker.
+
+Application might typically look like this.
+
     out-of-band:
-        # use this file to debug the preflight step
-        # The saf-preflight script will import the file as a Python
-        # module and then run the xyzzy function, passing in its
-        # globals directory as an argument
-        preflight: /tmp/foo12345.py@xyzzy
+        env:
+            # The worker code will import the file `/work/foo123456.py` as a Python
+            # module and then run the `main` function in that file
+            INJECT: foo12345
+            # or we could opt to run the `xyzzy` function in that file
+            INJECT: foo12345@xyzzy
 
------------------
+In the code in this directory, the application code is in `example.py`, the
+`foo12345.py` file is being represented by `elsewhere.py`, and the utils code
+I will need is in `intervene.py`.
 
-This is a change to the "debuggable" function in utils.py.
-
-This makes it possible to replace global objects (functions, class definitions)
-in the saf-preflight step (or elsewhere), or to replace methods in a class. One
-useful from of replacement is to use a Python decorator so that you're not
-having to replicate all the functionality in a large function or method. So that
-might look like
-
-    def xyzzy(G):
-        cls = G.get("MyClass", None)
-        assert cls is not None and isinstance(cls, (type, types.ClassType)), cls
-        old_method = cls.mymethod
-
-        def my_new_method(self, x, y):
-            print x, y
-            z = old_method(self, x, y)
-            print z
-            return z
-        
-        cls.mymethod = my_new_method
-
-So this is a case of decorating a class method. The code in the debuggable
-function will look something like
+To use this stuff in a normal workflow, you would run the `predeploy` playbook
+to make sure all the workers are awake, then use an ansible command to copy
+the `foo12345.py` file into the `~/app` directory which is mapped to `/work` in
+the docker container, and then use the YAML snippet above to set up the environment
+variable.
