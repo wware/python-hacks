@@ -171,7 +171,7 @@ def some_dumb_resource(request):
 
     The request argument uses one of py.test's built-in fixtures to set up the teardown.
     """
-    print "Set up some dumb resource"   # do some stuff
+    print("Set up some dumb resource")   # do some stuff
     """
     If you don't need a teardown, you can skip the rest of this, and remove the
     request argument above.
@@ -181,7 +181,7 @@ def some_dumb_resource(request):
         This finalizer will perform the teardown operation matchine the setup
         operation above.
         """
-        print "Tear down some dumb resource"     # undo some stuff
+        print("Tear down some dumb resource")     # undo some stuff
     request.addfinalizer(some_dumb_resource_teardown)
 
 
@@ -232,7 +232,7 @@ def test_python_eval1(input, expected, legit):
 @pytest.mark.parametrize('input, expected', [
     ('2 + 3', 5),
     ('6 - 4', 2),
-    pytest.mark.xfail(('5 + 2', 8))
+    # pytest.mark.xfail(('5 + 2', 8))
 ])
 def test_python_eval2(input, expected):
     """Another approach"""
@@ -277,3 +277,11 @@ def patch_datetime_now(monkeypatch):
 
 def test_patch_datetime(patch_datetime_now):
     assert datetime.datetime.now() == FAKE_TIME
+
+
+##############################################
+
+if __name__ == "__main__":
+    import os
+    f = os.path.realpath(__file__)
+    pytest.main([f])
